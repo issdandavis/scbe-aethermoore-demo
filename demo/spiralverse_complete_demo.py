@@ -18,9 +18,15 @@ import json
 import time
 import hashlib
 import hmac
+import os
+import asyncio
 from base64 import urlsafe_b64encode, urlsafe_b64decode
 from datetime import datetime, timezone
 import numpy as np
+
+# Replay protection cache
+USED_NONCES: set = set()
+NONCE_WINDOW_SECONDS = 300  # 5 minute window
 
 # ============================================================================
 # PART 1: THE SIX SACRED TONGUES (Languages)
@@ -102,22 +108,24 @@ class Agent6D:
 
 class RWPEnvelope:
     """
-    Resonant Wave Protocol - A secure message envelope
+    Resonant Wave Protocol - Demo Envelope (simplified for educational purposes)
 
     Think of it like sending a letter:
     - The envelope has your return address (origin)
     - It has a timestamp (when you sent it)
-    - It has a sequence number (so you know the order)
+    - It has a unique nonce (prevents replay attacks)
     - The contents are encrypted
     - There's a signature (like a wax seal) to prove it's real
+
+    Note: For production, use the full RWP v2.1 implementation with AES-256-GCM.
     """
 
     def __init__(self, tongue: str, origin: str, payload: dict):
-        self.version = "2.1"
+        self.version = "demo"
         self.tongue = tongue
         self.origin = origin
         self.timestamp = datetime.now(timezone.utc).isoformat()
-        self.sequence = int(time.time() * 1000) % 1000000
+        self.nonce = urlsafe_b64encode(os.urandom(16)).decode().rstrip("=")
         self.payload = payload
 
     def seal(self, secret_key: bytes) -> dict:
@@ -132,12 +140,12 @@ class RWPEnvelope:
         payload_bytes = payload_json.encode('utf-8')
 
         # Create the envelope metadata (AAD - Authenticated Associated Data)
-        aad = f"{self.version}|{self.tongue}|{self.origin}|{self.timestamp}|{self.sequence}"
+        aad = f"{self.version}|{self.tongue}|{self.origin}|{self.timestamp}|{self.nonce}"
 
-        # Simple encryption (in production, use AES-256-GCM)
-        # For demo, we'll use XOR with key hash
-        key_hash = hashlib.sha256(secret_key).digest()
-        encrypted = bytes(a ^ b for a, b in zip(payload_bytes, key_hash * (len(payload_bytes) // 32 + 1)))
+        # Per-message keystream derivation (uses AAD as nonce-like input)
+        # This prevents two-time-pad attacks when same key is reused
+        keystream = hmac.new(secret_key, aad.encode(), hashlib.sha256).digest()
+        encrypted = bytes(p ^ keystream[i % len(keystream)] for i, p in enumerate(payload_bytes))
 
         # Create signature (HMAC - like a wax seal)
         signature_data = (aad + "|" + urlsafe_b64encode(encrypted).decode()).encode()
@@ -148,11 +156,11 @@ class RWPEnvelope:
             "tongue": self.tongue,
             "origin": self.origin,
             "ts": self.timestamp,
-            "seq": self.sequence,
+            "nonce": self.nonce,
             "aad": aad,
             "payload": urlsafe_b64encode(encrypted).decode(),
             "sig": signature,
-            "enc": "demo-xor-256"
+            "enc": "demo-hmac-keystream"
         }
 
     @staticmethod
@@ -162,18 +170,39 @@ class RWPEnvelope:
 
         Like checking the wax seal is intact, then opening the letter.
         """
-        # Verify signature first
+        # Verify signature first (constant-time comparison)
         signature_data = (envelope["aad"] + "|" + envelope["payload"]).encode()
         expected_sig = hmac.new(secret_key, signature_data, hashlib.sha256).hexdigest()
 
-        if envelope["sig"] != expected_sig:
-            # FAIL-TO-NOISE: Return random garbage instead of error
-            return {"error": "NOISE", "data": np.random.bytes(32).hex()}
+        if not hmac.compare_digest(envelope["sig"], expected_sig):
+            # FAIL-TO-NOISE: Return deterministic garbage (derived from input)
+            # Deterministic so it's testable and auditable
+            noise = hmac.new(secret_key, signature_data, hashlib.sha256).digest()
+            return {"error": "NOISE", "data": noise.hex()}
 
-        # Decrypt payload
+        # Check replay protection (nonce must be unique)
+        nonce = envelope.get("nonce", "")
+        if nonce in USED_NONCES:
+            noise = hmac.new(secret_key, b"replay", hashlib.sha256).digest()
+            return {"error": "NOISE", "data": noise.hex()}
+
+        # Check timestamp window (prevent old messages)
+        try:
+            ts = datetime.fromisoformat(envelope["ts"].replace("Z", "+00:00"))
+            age = (datetime.now(timezone.utc) - ts).total_seconds()
+            if abs(age) > NONCE_WINDOW_SECONDS:
+                noise = hmac.new(secret_key, b"expired", hashlib.sha256).digest()
+                return {"error": "NOISE", "data": noise.hex()}
+        except (ValueError, KeyError):
+            pass  # Allow for demo purposes
+
+        # Mark nonce as used (replay protection)
+        USED_NONCES.add(nonce)
+
+        # Decrypt payload using same per-message keystream
         encrypted = urlsafe_b64decode(envelope["payload"])
-        key_hash = hashlib.sha256(secret_key).digest()
-        decrypted = bytes(a ^ b for a, b in zip(encrypted, key_hash * (len(encrypted) // 32 + 1)))
+        keystream = hmac.new(secret_key, envelope["aad"].encode(), hashlib.sha256).digest()
+        decrypted = bytes(p ^ keystream[i % len(keystream)] for i, p in enumerate(encrypted))
 
         return json.loads(decrypted.decode('utf-8'))
 
@@ -231,9 +260,10 @@ class SecurityGate:
         """
         risk = self.assess_risk(agent, action, context)
 
-        # Adaptive wait time (higher risk = longer wait)
+        # Adaptive dwell time (higher risk = longer wait)
+        # Note: This is time-dilation defense, not constant-time
         dwell_ms = min(self.max_wait_ms, self.min_wait_ms * (self.alpha ** risk))
-        time.sleep(dwell_ms / 1000.0)  # Simulate wait
+        await asyncio.sleep(dwell_ms / 1000.0)  # Non-blocking wait
 
         # Calculate composite score (0-1, higher = safer)
         trust_component = agent.trust_score * 0.4
@@ -333,7 +363,7 @@ async def demonstrate_spiralverse():
     print()
 
     # Create and seal an envelope
-    print("✉️  PART 3: Creating Secure Envelope (RWP v2.1)")
+    print("✉️  PART 3: Creating Secure Envelope (RWP Demo)")
     print("-" * 80)
 
     message = {
@@ -349,7 +379,7 @@ async def demonstrate_spiralverse():
     print(f"  Tongue: {sealed['tongue']} ({TONGUES[sealed['tongue']]})")
     print(f"  Origin: {sealed['origin']}")
     print(f"  Timestamp: {sealed['ts']}")
-    print(f"  Sequence: {sealed['seq']}")
+    print(f"  Nonce: {sealed['nonce']} (unique per message)")
     print(f"  Signature: {sealed['sig'][:32]}...")
     print(f"  Encrypted Payload: {sealed['payload'][:40]}...")
     print()
@@ -448,9 +478,9 @@ async def demonstrate_spiralverse():
 3. 6D VECTOR NAVIGATION: Agents exist in 6-dimensional space
    - Close agents = simple security (they trust each other)
    - Far agents = complex security (strangers need more checks)
-   - 70-80% bandwidth savings in tight formations
+   - Distance-based trust scoring
 
-4. RWP v2.1 ENVELOPE: Tamper-proof message envelopes
+4. RWP ENVELOPE: Tamper-proof message envelopes
    - Encrypted payload (the secret message)
    - Authenticated metadata (who, when, what)
    - Signature (unforgeable wax seal)
@@ -462,7 +492,7 @@ async def demonstrate_spiralverse():
 6. SECURITY GATE: Adaptive bouncer that learns
    - Low risk = quick approval
    - High risk = longer wait + more checks
-   - Constant-time delays prevent timing attacks
+   - Adaptive dwell time slows attackers
 
 7. ROUNDTABLE CONSENSUS: Multi-signature approval
    - Read data: 1 signature
@@ -483,13 +513,15 @@ Banks, governments, and AI companies will pay for this.
     print("🎯 NEXT STEPS")
     print("=" * 80)
     print("""
-1. Fix the 3 geometry bugs (15-30 min each)
-2. Run the enterprise test suite (Level 7)
-3. Create a 5-minute demo video
-4. Build a Streamlit dashboard
-5. Reach out to 10 prospects (banks, AI startups, gov contractors)
+1. Run the enterprise test suite (750+ tests)
+2. Create a 5-minute demo video
+3. Build a Streamlit dashboard
+4. Reach out to 10 prospects (banks, AI startups, gov contractors)
 
 Target: First paid pilot in 90 days ($15K-$45K)
+
+Note: For production use, see the full RWP v2.1 implementation
+with AES-256-GCM encryption in src/spiralverse/index.ts
 """)
     print("=" * 80)
 
