@@ -174,6 +174,11 @@ class TestPoincareMetricProperties:
         This is derived from the general formula with u=0:
         arg = 1 + 2||v||²/(1 - ||v||²) = (1 + ||v||²)/(1 - ||v||²)
         arccosh((1 + r²)/(1 - r²)) = 2 * arctanh(r) (standard identity)
+        This follows from the general formula:
+        d(u,v) = arcosh(1 + 2||u-v||²/((1-||u||²)(1-||v||²)))
+
+        When v=0: d(0,u) = arcosh(1 + 2||u||²/(1-||u||²))
+        Using identity: arcosh(1 + 2x²/(1-x²)) = 2*arctanh(x)
 
         This is a special case that MUST be exact.
         """
@@ -187,6 +192,7 @@ class TestPoincareMetricProperties:
             d_impl = layer_5_hyperbolic_distance(origin, u)
 
             # Compute using formula: d(0, u) = 2 * arctanh(||u||)
+            # Compute using correct formula: d(0, u) = 2 * arctanh(||u||)
             u_norm = np.linalg.norm(u)
             d_formula = 2.0 * np.arctanh(min(u_norm, 0.9999))
 

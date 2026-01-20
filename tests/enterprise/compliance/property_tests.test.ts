@@ -291,6 +291,9 @@ describe('Enterprise Compliance - Property Tests', () => {
             scores.commonCriteria,
             scores.nistCsf,
             scores.pciDss
+            scores.pciDss,
+          ) / 6;
+
           ];
 
           if (!allScores.every(Number.isFinite)) {
