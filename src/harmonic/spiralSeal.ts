@@ -281,7 +281,7 @@ async function hkdfDerive(
   // Import master secret as HKDF key
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
-    masterSecret,
+    new Uint8Array(masterSecret) as BufferSource,
     'HKDF',
     false,
     ['deriveBits'],
@@ -292,8 +292,8 @@ async function hkdfDerive(
     {
       name: 'HKDF',
       hash: 'SHA-256',
-      salt: salt,
-      info: info,
+      salt: new Uint8Array(salt) as BufferSource,
+      info: new Uint8Array(info) as BufferSource,
     },
     keyMaterial,
     length * 8,
@@ -317,7 +317,7 @@ async function aesGcmEncrypt(
 
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
-    key,
+    new Uint8Array(key) as BufferSource,
     'AES-GCM',
     false,
     ['encrypt'],
@@ -326,12 +326,12 @@ async function aesGcmEncrypt(
   const result = await crypto.subtle.encrypt(
     {
       name: 'AES-GCM',
-      iv: nonce,
-      additionalData: aad,
+      iv: new Uint8Array(nonce) as BufferSource,
+      additionalData: new Uint8Array(aad) as BufferSource,
       tagLength: 128,
     },
     cryptoKey,
-    plaintext,
+    new Uint8Array(plaintext) as BufferSource,
   );
 
   // Result includes ciphertext + tag (last 16 bytes)
@@ -358,7 +358,7 @@ async function aesGcmDecrypt(
 
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
-    key,
+    new Uint8Array(key) as BufferSource,
     'AES-GCM',
     false,
     ['decrypt'],
@@ -372,8 +372,8 @@ async function aesGcmDecrypt(
   const result = await crypto.subtle.decrypt(
     {
       name: 'AES-GCM',
-      iv: nonce,
-      additionalData: aad,
+      iv: new Uint8Array(nonce) as BufferSource,
+      additionalData: new Uint8Array(aad) as BufferSource,
       tagLength: 128,
     },
     cryptoKey,

@@ -140,8 +140,8 @@ export class Feistel {
     }
 
     const halfLen = workingData.length / 2;
-    let left = workingData.slice(0, halfLen);
-    let right = workingData.slice(halfLen);
+    let left: Uint8Array = workingData.slice(0, halfLen);
+    let right: Uint8Array = workingData.slice(halfLen);
 
     const roundKeys = this.deriveRoundKeys(keyBuffer);
 
@@ -175,8 +175,8 @@ export class Feistel {
       typeof key === 'string' ? new TextEncoder().encode(key) : key;
 
     const halfLen = data.length / 2;
-    let left = data.slice(0, halfLen);
-    let right = data.slice(halfLen);
+    let left: Uint8Array = data.slice(0, halfLen);
+    let right: Uint8Array = data.slice(halfLen);
 
     const roundKeys = this.deriveRoundKeys(keyBuffer);
 
