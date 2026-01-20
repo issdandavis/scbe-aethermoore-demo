@@ -5,7 +5,22 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { SCBE, evaluateRisk, sign, verify, breathe } from '../../src/api/index.js';
+import {
+  SCBE,
+  Agent,
+  SecurityGate,
+  Roundtable,
+  evaluateRisk,
+  sign,
+  verify,
+  breathe,
+  signForAction,
+  verifyForAction,
+  checkAccess,
+  requiredTongues,
+  harmonicComplexity,
+  getPricingTier,
+} from '../../src/api/index.js';
 
 describe('SCBE API', () => {
   let api: SCBE;
@@ -168,5 +183,188 @@ describe('SCBE API', () => {
       // Test passes regardless of decision
       expect(risk.decision).toBeDefined();
     });
+  });
+
+  describe('signForAction', () => {
+    it('should sign with correct tongues for read action', () => {
+      const result = api.signForAction({ data: 'test' }, 'read');
+      expect(result.tongues).toEqual(['ko']);
+    });
+
+    it('should sign with correct tongues for deploy action', () => {
+      const result = api.signForAction({ data: 'test' }, 'deploy');
+      expect(result.tongues).toEqual(['ko', 'ru', 'um', 'dr']);
+    });
+  });
+});
+
+describe('Agent', () => {
+  it('should create an agent with valid 6D position', () => {
+    const agent = new Agent('Alice', [1, 2, 3, 4, 5, 6]);
+    expect(agent.name).toBe('Alice');
+    expect(agent.position).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(agent.trustScore).toBe(1.0);
+  });
+
+  it('should reject non-6D positions', () => {
+    expect(() => new Agent('Bob', [1, 2, 3])).toThrow('6-element');
+    expect(() => new Agent('Bob', [1, 2, 3, 4, 5, 6, 7])).toThrow('6-element');
+  });
+
+  it('should calculate distance between agents', () => {
+    const alice = new Agent('Alice', [0, 0, 0, 0, 0, 0]);
+    const bob = new Agent('Bob', [3, 4, 0, 0, 0, 0]);
+    expect(alice.distanceTo(bob)).toBe(5); // 3-4-5 triangle
+  });
+
+  it('should check in and refresh trust', () => {
+    const agent = new Agent('Test', [0, 0, 0, 0, 0, 0], 0.5);
+    expect(agent.trustScore).toBe(0.5);
+    agent.checkIn();
+    expect(agent.trustScore).toBe(0.6); // +0.1
+  });
+
+  it('should decay trust over time', async () => {
+    const agent = new Agent('Test', [0, 0, 0, 0, 0, 0]);
+    const initialTrust = agent.trustScore;
+
+    // Wait a bit
+    await new Promise(r => setTimeout(r, 100));
+
+    const decayedTrust = agent.decayTrust(1.0); // Fast decay for testing
+    expect(decayedTrust).toBeLessThan(initialTrust);
+  });
+});
+
+describe('SecurityGate', () => {
+  let gate: SecurityGate;
+  let agent: Agent;
+
+  beforeEach(() => {
+    gate = new SecurityGate({ minWaitMs: 1, maxWaitMs: 10, alpha: 1.1 }); // Fast for tests
+    agent = new Agent('TestAgent', [0, 0, 0, 0, 0, 0]);
+  });
+
+  it('should assess risk based on trust', () => {
+    agent.trustScore = 1.0;
+    const lowRisk = gate.assessRisk(agent, 'read', { source: 'internal' });
+
+    agent.trustScore = 0.2;
+    const highRisk = gate.assessRisk(agent, 'read', { source: 'internal' });
+
+    expect(highRisk).toBeGreaterThan(lowRisk);
+  });
+
+  it('should assess higher risk for dangerous actions', () => {
+    const safeRisk = gate.assessRisk(agent, 'read', { source: 'internal' });
+    const dangerousRisk = gate.assessRisk(agent, 'delete', { source: 'internal' });
+
+    expect(dangerousRisk).toBeGreaterThan(safeRisk);
+  });
+
+  it('should allow trusted agents for safe actions', async () => {
+    agent.trustScore = 1.0;
+    const result = await gate.check(agent, 'read', { source: 'internal' });
+    expect(result.status).toBe('allow');
+  });
+
+  it('should review or deny suspicious requests', async () => {
+    agent.trustScore = 0.1;
+    const result = await gate.check(agent, 'delete', { source: 'external' });
+    expect(['review', 'deny']).toContain(result.status);
+  });
+});
+
+describe('Roundtable', () => {
+  it('should return correct tongues for read action', () => {
+    const tongues = Roundtable.requiredTongues('read');
+    expect(tongues).toEqual(['ko']);
+  });
+
+  it('should return correct tongues for write action', () => {
+    const tongues = Roundtable.requiredTongues('write');
+    expect(tongues).toEqual(['ko', 'ru']);
+  });
+
+  it('should return correct tongues for delete action', () => {
+    const tongues = Roundtable.requiredTongues('delete');
+    expect(tongues).toEqual(['ko', 'ru', 'um']);
+  });
+
+  it('should return correct tongues for deploy action', () => {
+    const tongues = Roundtable.requiredTongues('deploy');
+    expect(tongues).toEqual(['ko', 'ru', 'um', 'dr']);
+  });
+
+  it('should check quorum correctly', () => {
+    expect(Roundtable.hasQuorum(['ko'], ['ko'])).toBe(true);
+    expect(Roundtable.hasQuorum(['ko', 'ru'], ['ko', 'ru'])).toBe(true);
+    expect(Roundtable.hasQuorum(['ko'], ['ko', 'ru'])).toBe(false);
+  });
+});
+
+describe('Harmonic Complexity', () => {
+  it('should calculate complexity for depth 1', () => {
+    const c = harmonicComplexity(1);
+    expect(c).toBeCloseTo(1.5, 2);
+  });
+
+  it('should calculate complexity for depth 2', () => {
+    const c = harmonicComplexity(2);
+    expect(c).toBeCloseTo(Math.pow(1.5, 4), 2);
+  });
+
+  it('should calculate complexity for depth 3', () => {
+    const c = harmonicComplexity(3);
+    expect(c).toBeCloseTo(Math.pow(1.5, 9), 2);
+  });
+
+  it('should cap at MAX_COMPLEXITY', () => {
+    const c = harmonicComplexity(100);
+    expect(c).toBeLessThanOrEqual(1e10);
+  });
+
+  it('should return FREE tier for depth 1', () => {
+    const tier = getPricingTier(1);
+    expect(tier.tier).toBe('FREE');
+  });
+
+  it('should return STARTER tier for depth 2', () => {
+    const tier = getPricingTier(2);
+    expect(tier.tier).toBe('STARTER');
+  });
+
+  it('should return PRO tier for depth 3', () => {
+    const tier = getPricingTier(3);
+    expect(tier.tier).toBe('PRO');
+  });
+
+  it('should return ENTERPRISE tier for depth 4+', () => {
+    const tier = getPricingTier(4);
+    expect(tier.tier).toBe('ENTERPRISE');
+  });
+});
+
+describe('Convenience Functions', () => {
+  it('signForAction should work', () => {
+    const result = signForAction({ data: 'test' }, 'delete');
+    expect(result.tongues).toEqual(['ko', 'ru', 'um']);
+  });
+
+  it('verifyForAction should verify with policy', () => {
+    const { envelope } = signForAction({ data: 'test' }, 'write');
+    const result = verifyForAction(envelope, 'write');
+    expect(result.valid).toBe(true);
+  });
+
+  it('checkAccess should work with agent', async () => {
+    const agent = new Agent('Test', [0, 0, 0, 0, 0, 0]);
+    const result = await checkAccess(agent, 'read', { source: 'internal' });
+    expect(['allow', 'review', 'deny']).toContain(result.status);
+  });
+
+  it('requiredTongues should work', () => {
+    expect(requiredTongues('read')).toEqual(['ko']);
+    expect(requiredTongues('deploy')).toEqual(['ko', 'ru', 'um', 'dr']);
   });
 });
