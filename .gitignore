@@ -3,3 +3,8 @@
 
 # Performance test evidence files (hardware-specific)
 docs/evidence/*.json
+
+# Python bytecode cache
+__pycache__/
+*.pyc
+*.pyo
