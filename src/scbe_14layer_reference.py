@@ -199,7 +199,9 @@ def layer_7_phase_transform(u: np.ndarray, a: np.ndarray, Q: np.ndarray,
     au_dot = np.dot(a, u)
 
     numerator = (1 + 2 * au_dot + u_norm_sq) * a + (1 - a_norm_sq) * u
-    denominator = 1 + 2 * au_dot + a_norm_sq * u_norm_sq + eps
+    raw_denominator = 1 + 2 * au_dot + a_norm_sq * u_norm_sq
+    # Only add eps when denominator is close to zero to avoid numerical issues
+    denominator = raw_denominator if abs(raw_denominator) > eps else eps
 
     shifted = numerator / denominator
 

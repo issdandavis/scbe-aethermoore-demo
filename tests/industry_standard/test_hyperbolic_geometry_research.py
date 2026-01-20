@@ -167,25 +167,29 @@ class TestPoincareMetricProperties:
     def test_distance_to_origin(self):
         """
         Distance to Origin Test
-        
+
         For a point u in the Poincaré ball, the distance to origin is:
-        d(0, u) = artanh(||u||)
-        
+        d(0, u) = 2 * artanh(||u||)
+
+        This is derived from the general formula with u=0:
+        arg = 1 + 2||v||²/(1 - ||v||²) = (1 + ||v||²)/(1 - ||v||²)
+        arccosh((1 + r²)/(1 - r²)) = 2 * arctanh(r) (standard identity)
+
         This is a special case that MUST be exact.
         """
         for _ in range(50):
             u = np.random.randn(6) * 0.5
             u = u / (np.linalg.norm(u) + 1.1)
-            
+
             origin = np.zeros_like(u)
-            
+
             # Compute distance using implementation
             d_impl = layer_5_hyperbolic_distance(origin, u)
-            
-            # Compute using formula
+
+            # Compute using formula: d(0, u) = 2 * arctanh(||u||)
             u_norm = np.linalg.norm(u)
-            d_formula = np.arctanh(min(u_norm, 0.9999))
-            
+            d_formula = 2.0 * np.arctanh(min(u_norm, 0.9999))
+
             # Must match
             assert abs(d_impl - d_formula) < 1e-8, f"Distance to origin mismatch: impl={d_impl}, formula={d_formula}"
 
