@@ -61,9 +61,27 @@ app.add_middleware(
 
 # API Key authentication
 API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
-VALID_API_KEYS = {
-    os.getenv("SCBE_API_KEY", "sk_test_demo_key_12345"): "demo_tenant",
-}
+
+def _load_api_keys() -> dict:
+    """
+    Load API keys from environment. No hardcoded defaults.
+
+    Set SCBE_API_KEY environment variable before starting.
+    For multiple keys: SCBE_API_KEY=key1,key2,key3
+    """
+    api_key_env = os.getenv("SCBE_API_KEY")
+    if not api_key_env:
+        logger.warning("SCBE_API_KEY not set - API will reject all requests")
+        return {}
+
+    keys = {}
+    for i, key in enumerate(api_key_env.split(",")):
+        key = key.strip()
+        if key:
+            keys[key] = f"tenant_{i}"
+    return keys
+
+VALID_API_KEYS = _load_api_keys()
 
 # In-memory stores (replace with database in production)
 AGENTS_STORE: Dict[str, dict] = {}
