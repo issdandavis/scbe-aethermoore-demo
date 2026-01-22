@@ -8,3 +8,31 @@ docs/evidence/*.json
 __pycache__/
 *.pyc
 *.pyo
+
+# Node.js
+node_modules/
+npm-debug.log*
+
+# Build output
+dist/
+
+# Test coverage
+.coverage
+coverage/
+coverage.xml
+htmlcov/
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
