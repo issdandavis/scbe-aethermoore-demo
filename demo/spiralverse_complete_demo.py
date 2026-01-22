@@ -667,5 +667,4 @@ with AES-256-GCM encryption in src/spiralverse/index.ts
 
 # Run the demo
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(demonstrate_spiralverse())
