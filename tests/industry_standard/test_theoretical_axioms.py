@@ -25,7 +25,6 @@ import pytest
 import sys
 import os
 import numpy as np
-from typing import List
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
