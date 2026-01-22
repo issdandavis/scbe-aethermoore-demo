@@ -25,10 +25,7 @@ import pytest
 import sys
 import os
 import numpy as np
-import time
-import statistics
-from typing import List, Tuple, Callable
-from scipy import stats
+from typing import List
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
@@ -37,9 +34,7 @@ try:
     from scbe_14layer_reference import (
         layer_4_poincare_embedding,
         layer_5_hyperbolic_distance,
-        layer_6_breathing_transform,
-        layer_7_phase_transform,
-        layer_12_harmonic_scaling
+        layer_6_breathing_transform
     )
     SCBE_AVAILABLE = True
 except ImportError:
