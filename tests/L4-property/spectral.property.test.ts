@@ -7,7 +7,7 @@
  * @level Staff Engineer
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it } from 'vitest';
 import * as fc from 'fast-check';
 import {
   computeSpectralCoherence,
