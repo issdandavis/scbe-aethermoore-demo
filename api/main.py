@@ -32,6 +32,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 
+# Import persistence layer
+try:
+    from api.persistence import get_persistence, SCBEPersistence
+except ImportError:
+    from persistence import get_persistence, SCBEPersistence
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -371,6 +377,28 @@ async def authorize(
         "latency_ms": DECISIONS_STORE[decision_id]["latency_ms"]
     }))
 
+    # Persist to Firebase
+    try:
+        persistence = get_persistence()
+        risk_level = "LOW" if score > 0.6 else ("MEDIUM" if score > 0.3 else "HIGH")
+        audit_id = persistence.log_decision(
+            agent_id=request.agent_id,
+            action=request.action,
+            decision=decision.value,
+            trust_score=trust_score,
+            risk_level=risk_level,
+            context=request.context or {},
+            consensus_result={"single_decision": True}
+        )
+        persistence.record_trust(
+            agent_id=request.agent_id,
+            trust_score=trust_score,
+            factors={"score": score, "sensitivity": sensitivity},
+            decision=decision.value
+        )
+    except Exception as e:
+        logger.warning(f"Persistence error (non-fatal): {e}")
+
     return AuthorizeResponse(
         decision=decision,
         decision_id=decision_id,
@@ -522,6 +550,7 @@ async def get_audit(
 @app.get("/v1/health", response_model=HealthResponse, tags=["System"])
 async def health_check():
     """Health check endpoint (no auth required)."""
+    persistence = get_persistence()
     return HealthResponse(
         status="healthy",
         version="1.0.0",
@@ -529,9 +558,203 @@ async def health_check():
         checks={
             "api": "ok",
             "pipeline": "ok",
-            "storage": "ok" if len(AGENTS_STORE) >= 0 else "degraded"
+            "storage": "ok" if len(AGENTS_STORE) >= 0 else "degraded",
+            "firebase": "connected" if persistence.is_connected else "disconnected"
         }
     )
+
+
+# =============================================================================
+# Metrics & Monitoring Endpoints
+# =============================================================================
+
+class MetricsResponse(BaseModel):
+    total_decisions: int
+    allow_count: int
+    quarantine_count: int
+    deny_count: int
+    allow_rate: float
+    quarantine_rate: float
+    deny_rate: float
+    avg_trust_score: float
+    firebase_connected: bool
+
+
+@app.get("/v1/metrics", response_model=MetricsResponse, tags=["Monitoring"])
+async def get_metrics(tenant: str = Depends(verify_api_key)):
+    """Get decision metrics for monitoring dashboards."""
+    persistence = get_persistence()
+    metrics = persistence.get_metrics()
+    metrics["firebase_connected"] = persistence.is_connected
+    return MetricsResponse(**metrics)
+
+
+# =============================================================================
+# Webhook/Zapier Integration Endpoints
+# =============================================================================
+
+class WebhookConfig(BaseModel):
+    webhook_url: str
+    events: List[str] = ["decision_deny", "decision_quarantine", "trust_decline"]
+    min_severity: str = "medium"
+
+
+class AlertResponse(BaseModel):
+    alert_id: str
+    timestamp: str
+    severity: str
+    alert_type: str
+    message: str
+    agent_id: Optional[str]
+    audit_id: Optional[str]
+    data: dict
+
+
+# Store webhooks in memory (would be persisted in production)
+WEBHOOK_STORE: Dict[str, dict] = {}
+
+
+@app.post("/v1/webhooks", tags=["Webhooks"])
+async def register_webhook(
+    config: WebhookConfig,
+    tenant: str = Depends(verify_api_key)
+):
+    """
+    Register a webhook URL for alert notifications.
+
+    Use this to connect SCBE alerts to Zapier, Slack, or other services.
+    """
+    webhook_id = f"webhook_{uuid.uuid4().hex[:8]}"
+    WEBHOOK_STORE[webhook_id] = {
+        "webhook_id": webhook_id,
+        "tenant": tenant,
+        "url": config.webhook_url,
+        "events": config.events,
+        "min_severity": config.min_severity,
+        "created_at": datetime.utcnow().isoformat()
+    }
+
+    logger.info(json.dumps({
+        "event": "webhook_registered",
+        "webhook_id": webhook_id,
+        "url": config.webhook_url[:50] + "..."
+    }))
+
+    return {"webhook_id": webhook_id, "status": "registered"}
+
+
+@app.get("/v1/webhooks", tags=["Webhooks"])
+async def list_webhooks(tenant: str = Depends(verify_api_key)):
+    """List registered webhooks for this tenant."""
+    return [w for w in WEBHOOK_STORE.values() if w["tenant"] == tenant]
+
+
+@app.delete("/v1/webhooks/{webhook_id}", tags=["Webhooks"])
+async def delete_webhook(
+    webhook_id: str,
+    tenant: str = Depends(verify_api_key)
+):
+    """Remove a registered webhook."""
+    if webhook_id not in WEBHOOK_STORE:
+        raise HTTPException(status_code=404, detail="Webhook not found")
+    if WEBHOOK_STORE[webhook_id]["tenant"] != tenant:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    del WEBHOOK_STORE[webhook_id]
+    return {"status": "deleted"}
+
+
+@app.get("/v1/alerts", response_model=List[AlertResponse], tags=["Alerts"])
+async def get_alerts(
+    tenant: str = Depends(verify_api_key),
+    limit: int = 50,
+    pending_only: bool = True
+):
+    """
+    Get alerts for webhook delivery.
+
+    Zapier can poll this endpoint to get new alerts.
+    """
+    persistence = get_persistence()
+
+    if pending_only:
+        alerts = persistence.get_pending_alerts(limit=limit)
+    else:
+        # Get recent alerts from audit logs
+        alerts = []
+        logs = persistence.get_audit_logs(limit=limit)
+        for log in logs:
+            if log["decision"] in ["DENY", "QUARANTINE"]:
+                alerts.append({
+                    "alert_id": f"alert-{log['audit_id']}",
+                    "timestamp": log["timestamp"],
+                    "severity": "high" if log["decision"] == "DENY" else "medium",
+                    "alert_type": f"decision_{log['decision'].lower()}",
+                    "message": f"Agent {log['agent_id']} request was {log['decision']}",
+                    "agent_id": log["agent_id"],
+                    "audit_id": log["audit_id"],
+                    "data": {"trust_score": log["trust_score"]}
+                })
+
+    return alerts
+
+
+@app.post("/v1/alerts/{alert_id}/ack", tags=["Alerts"])
+async def acknowledge_alert(
+    alert_id: str,
+    tenant: str = Depends(verify_api_key)
+):
+    """
+    Acknowledge an alert (mark as sent/processed).
+
+    Call this after successfully processing an alert via webhook.
+    """
+    persistence = get_persistence()
+    success = persistence.mark_alert_sent(alert_id)
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    return {"status": "acknowledged", "alert_id": alert_id}
+
+
+# =============================================================================
+# Trust History Endpoints
+# =============================================================================
+
+@app.get("/v1/agents/{agent_id}/trust-history", tags=["Agents"])
+async def get_trust_history(
+    agent_id: str,
+    tenant: str = Depends(verify_api_key),
+    limit: int = 30
+):
+    """Get trust score history for an agent."""
+    persistence = get_persistence()
+    history = persistence.get_trust_history(agent_id, limit=limit)
+    trend = persistence.get_trust_trend(agent_id)
+
+    return {
+        "agent_id": agent_id,
+        "trend": trend,
+        "history": history
+    }
+
+
+@app.get("/v1/audit", tags=["Audit"])
+async def list_audit_logs(
+    tenant: str = Depends(verify_api_key),
+    agent_id: Optional[str] = None,
+    decision: Optional[str] = None,
+    limit: int = 100
+):
+    """Query audit logs with optional filters."""
+    persistence = get_persistence()
+    logs = persistence.get_audit_logs(
+        agent_id=agent_id,
+        decision=decision,
+        limit=limit
+    )
+    return {"count": len(logs), "logs": logs}
 
 
 # =============================================================================
@@ -540,10 +763,12 @@ async def health_check():
 
 @app.on_event("startup")
 async def startup():
+    persistence = get_persistence()
     logger.info(json.dumps({
         "event": "api_startup",
         "version": "1.0.0",
-        "endpoints": 6
+        "endpoints": 14,
+        "firebase_connected": persistence.is_connected
     }))
 
 
