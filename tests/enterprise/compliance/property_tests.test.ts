@@ -296,6 +296,7 @@ describe('Enterprise Compliance - Property Tests', () => {
             scores.fips140,
             scores.commonCriteria,
             scores.nistCsf,
+            scores.pciDss
             scores.pciDss,
           ];
 
