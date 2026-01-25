@@ -476,7 +476,7 @@ def scbe_14layer_pipeline(
     # Other params
     alpha: float = 1.0,
     eps_ball: float = 0.01,
-    R: float = np.e,
+    R: float = 10.0,
     theta1: float = 0.33,
     theta2: float = 0.67
 ) -> dict:
@@ -655,8 +655,8 @@ if __name__ == "__main__":
     print(f"  d_tri = {d_tri:.6f}")
 
     print("\n[Layer 12] Harmonic Scaling:")
-    H = layer_12_harmonic_scaling(d_star, R=np.e)
-    print(f"  H(d*={d_star:.4f}, R=e) = {H:.6f}")
+    H = layer_12_harmonic_scaling(d_star, R=10.0)
+    print(f"  H(d*={d_star:.4f}, R=10.0) = {H:.6f}")
 
     print("\n[Layer 13] Risk Decision:")
     Risk_base = 0.4
