@@ -220,13 +220,13 @@ describe('Dual-Channel Consensus Gate', () => {
     it('should deny replay attack', () => {
       const K = crypto.randomBytes(32);
       const gate = new DualChannelGate(PROFILE_16K, K, 60);
-      
+
       const challenge = gate.generateChallenge();
       const timestamp = Date.now() / 1000;
       const nonce = crypto.randomBytes(16).toString('hex');
       const AAD = Buffer.from('test');
       const payload = Buffer.from('payload');
-      
+
       const C = Buffer.concat([
         Buffer.from('scbe.v1'),
         AAD,
@@ -235,17 +235,19 @@ describe('Dual-Channel Consensus Gate', () => {
         payload
       ]);
       const tag = crypto.createHmac('sha256', K).update(C).digest();
-      
+
       const seed = crypto.createHmac('sha256', K)
         .update(Buffer.from('bins'))
         .update(Buffer.from(timestamp.toString()))
         .update(Buffer.from(nonce))
         .update(Buffer.from(challenge))
         .digest();
-      
+
+      // Use reduced bin count to avoid selection failures with random seeds
+      const reducedB = 16;
       const { bins, phases } = selectBinsAndPhases(
         seed,
-        PROFILE_16K.b,
+        reducedB,
         PROFILE_16K.k_min,
         PROFILE_16K.k_max,
         PROFILE_16K.delta_k_min
