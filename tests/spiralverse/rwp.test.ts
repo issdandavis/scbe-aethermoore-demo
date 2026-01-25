@@ -310,7 +310,7 @@ describe('RWP v2.1 Multi-Signature Envelopes', () => {
       const result = verifyRoundtable(envelope, testKeyring, { policy: 'strict' });
 
       expect(result.valid).toBe(false);
-      expect(result.error).toContain('requires tongues');
+      expect(result.error).toContain('missing required tongue');
     });
 
     it('should enforce "critical" policy (requires RU + UM + DR)', () => {
@@ -335,7 +335,7 @@ describe('RWP v2.1 Multi-Signature Envelopes', () => {
       const result = verifyRoundtable(envelope, testKeyring, { policy: 'critical' });
 
       expect(result.valid).toBe(false);
-      expect(result.error).toContain('requires tongues');
+      expect(result.error).toContain('missing required tongue');
     });
   });
 

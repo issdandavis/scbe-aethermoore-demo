@@ -24,7 +24,7 @@ import { createHmac, randomBytes } from 'crypto';
 export type TongueID = 'ko' | 'av' | 'ru' | 'ca' | 'um' | 'dr';
 
 /** Policy enforcement level */
-export type PolicyLevel = 'standard' | 'strict' | 'critical';
+export type PolicyLevel = 'standard' | 'strict' | 'secret' | 'critical';
 
 /** Keyring containing keys for all tongues */
 export type Keyring = {
@@ -80,17 +80,35 @@ const DEFAULT_MAX_FUTURE_SKEW = 60000; // 1 minute
 
 /** Policy requirements for each level */
 const POLICY_REQUIREMENTS: Record<PolicyLevel, TongueID[]> = {
-  standard: ['ko'],
-  strict: ['ru'],
-  critical: ['ru', 'um', 'dr'],
+  standard: [],  // Any valid signature
+  strict: ['ru'],  // Requires Policy (RU) tongue
+  secret: ['um'],  // Requires Security (UM) tongue
+  critical: ['ru', 'um', 'dr'],  // Requires Policy + Security + Structure
 };
 
 /** Action to policy mapping */
 const ACTION_POLICIES: Record<string, PolicyLevel> = {
+  // Standard operations (read, query, list)
   read: 'standard',
-  write: 'standard',
-  deploy: 'strict',
-  delete: 'strict',
+  query: 'standard',
+  list: 'standard',
+  // Strict operations (write, update, create)
+  write: 'strict',
+  update: 'strict',
+  create: 'strict',
+  modify: 'strict',
+  config: 'strict',
+  // Secret operations (delete, credential handling)
+  delete: 'secret',
+  credential: 'secret',
+  secret: 'secret',
+  key: 'secret',
+  password: 'secret',
+  // Critical operations (deploy, grant, revoke)
+  deploy: 'critical',
+  grant: 'critical',
+  grant_access: 'critical',
+  revoke: 'critical',
   admin: 'critical',
   security: 'critical',
 };
@@ -408,7 +426,15 @@ export function verifyRoundtable(
  * @returns Whether the policy is satisfied
  */
 export function checkPolicy(tongues: TongueID[], policy: PolicyLevel): boolean {
+  // Empty tongues always fails
+  if (tongues.length === 0) {
+    return false;
+  }
   const required = POLICY_REQUIREMENTS[policy];
+  // Standard policy: any valid signature (required is empty)
+  if (required.length === 0) {
+    return true;
+  }
   return required.every((t) => tongues.includes(t));
 }
 

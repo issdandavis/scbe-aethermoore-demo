@@ -323,7 +323,13 @@ async def authorize(
 
     agent = AGENTS_STORE[request.agent_id]
     trust_score = agent["trust_score"]
-    sensitivity = request.context.get("sensitivity", 0.5) if request.context else 0.5
+    # Handle sensitivity as string or float
+    raw_sensitivity = request.context.get("sensitivity", 0.5) if request.context else 0.5
+    if isinstance(raw_sensitivity, str):
+        sensitivity_map = {"low": 0.2, "medium": 0.5, "high": 0.8, "critical": 1.0}
+        sensitivity = sensitivity_map.get(raw_sensitivity.lower(), 0.5)
+    else:
+        sensitivity = float(raw_sensitivity)
 
     # Run 14-layer pipeline
     decision, score, explanation = scbe_14_layer_pipeline(
