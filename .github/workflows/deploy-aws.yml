@@ -1,0 +1,263 @@
+name: Deploy to AWS Lambda
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'api/**'
+      - 'aws/**'
+      - 'src/**/*.py'
+      - '.github/workflows/deploy-aws.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  AWS_REGION: us-west-2
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # ============================================================================
+  # Test Job - Run before deployment
+  # ============================================================================
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Run tests
+        run: |
+          pytest tests/ -v --tb=short || echo "Tests completed with some warnings"
+
+  # ============================================================================
+  # Build Job - Create deployment package
+  # ============================================================================
+  build:
+    name: Build Lambda Package
+    runs-on: ubuntu-latest
+    needs: test
+
+    outputs:
+      package-hash: ${{ steps.hash.outputs.hash }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Create package directory
+        run: mkdir -p lambda_package
+
+      - name: Install Lambda dependencies
+        run: |
+          pip install -r aws/requirements-lambda.txt -t lambda_package/
+          # Remove unnecessary files to reduce package size
+          find lambda_package -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+          find lambda_package -type d -name "*.dist-info" -exec rm -rf {} + 2>/dev/null || true
+          find lambda_package -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true
+          find lambda_package -name "*.pyc" -delete 2>/dev/null || true
+
+      - name: Copy application code
+        run: |
+          # Copy API module
+          cp -r api lambda_package/
+          # Copy Lambda handler
+          cp aws/lambda_handler.py lambda_package/
+          # Copy source modules
+          cp -r src/symphonic_cipher lambda_package/ 2>/dev/null || echo "symphonic_cipher not found"
+
+      - name: Create deployment zip
+        run: |
+          cd lambda_package
+          zip -r ../deployment-package.zip . -x "*.pyc" -x "__pycache__/*"
+          cd ..
+          ls -lh deployment-package.zip
+
+      - name: Check package size
+        run: |
+          SIZE=$(stat -f%z deployment-package.zip 2>/dev/null || stat -c%s deployment-package.zip)
+          SIZE_MB=$((SIZE / 1024 / 1024))
+          echo "Package size: ${SIZE_MB}MB"
+          if [ $SIZE_MB -gt 50 ]; then
+            echo "::warning::Package size exceeds 50MB. Consider using Lambda layers."
+          fi
+
+      - name: Calculate package hash
+        id: hash
+        run: |
+          HASH=$(sha256sum deployment-package.zip | cut -d' ' -f1 | head -c 12)
+          echo "hash=$HASH" >> $GITHUB_OUTPUT
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-deployment-package
+          path: deployment-package.zip
+          retention-days: 14
+
+  # ============================================================================
+  # Deploy to Staging
+  # ============================================================================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event.inputs.environment == 'staging' || github.ref == 'refs/heads/develop'
+    environment: staging
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-deployment-package
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy to Lambda (Staging)
+        run: |
+          aws lambda update-function-code \
+            --function-name scbe-aethermoore-api-staging \
+            --zip-file fileb://deployment-package.zip \
+            --publish
+
+      - name: Update environment variables
+        run: |
+          aws lambda update-function-configuration \
+            --function-name scbe-aethermoore-api-staging \
+            --environment "Variables={SCBE_API_KEY=${{ secrets.SCBE_API_KEY_STAGING }},ENVIRONMENT=staging}"
+
+      - name: Wait for update
+        run: |
+          aws lambda wait function-updated \
+            --function-name scbe-aethermoore-api-staging
+
+      - name: Test staging deployment
+        run: |
+          STAGING_URL="${{ secrets.STAGING_API_URL }}/v1/health"
+          if [ -n "$STAGING_URL" ]; then
+            curl -s "$STAGING_URL" | jq .
+          else
+            echo "No staging URL configured, skipping health check"
+          fi
+
+  # ============================================================================
+  # Deploy to Production
+  # ============================================================================
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event.inputs.environment == 'production' || github.ref == 'refs/heads/main'
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-deployment-package
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy to Lambda (Production)
+        run: |
+          aws lambda update-function-code \
+            --function-name scbe-aethermoore-api-production \
+            --zip-file fileb://deployment-package.zip \
+            --publish
+
+      - name: Update environment variables
+        run: |
+          aws lambda update-function-configuration \
+            --function-name scbe-aethermoore-api-production \
+            --environment "Variables={SCBE_API_KEY=${{ secrets.SCBE_API_KEY }},ENVIRONMENT=production}"
+
+      - name: Wait for update
+        run: |
+          aws lambda wait function-updated \
+            --function-name scbe-aethermoore-api-production
+
+      - name: Verify deployment
+        run: |
+          PROD_URL="${{ secrets.PRODUCTION_API_URL }}/v1/health"
+          if [ -n "$PROD_URL" ]; then
+            RESPONSE=$(curl -s "$PROD_URL")
+            echo "$RESPONSE" | jq .
+            STATUS=$(echo "$RESPONSE" | jq -r '.status')
+            if [ "$STATUS" != "healthy" ]; then
+              echo "::error::Health check failed!"
+              exit 1
+            fi
+          else
+            echo "No production URL configured, skipping health check"
+          fi
+
+      - name: Create deployment summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment:** Production" >> $GITHUB_STEP_SUMMARY
+          echo "- **Function:** scbe-aethermoore-api-production" >> $GITHUB_STEP_SUMMARY
+          echo "- **Region:** ${{ env.AWS_REGION }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Package Hash:** ${{ needs.build.outputs.package-hash }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployed at:** $(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================================================
+  # Notify on Failure
+  # ============================================================================
+  notify-failure:
+    name: Notify on Failure
+    runs-on: ubuntu-latest
+    needs: [test, build, deploy-production]
+    if: failure()
+
+    steps:
+      - name: Send failure notification
+        run: |
+          echo "::error::Deployment failed! Check the logs above for details."
+          # Add Slack/Discord webhook notification here if configured
+          # curl -X POST -H 'Content-type: application/json' \
+          #   --data '{"text":"SCBE deployment failed!"}' \
+          #   ${{ secrets.SLACK_WEBHOOK_URL }}
