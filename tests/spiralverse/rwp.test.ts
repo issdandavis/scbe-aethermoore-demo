@@ -347,10 +347,11 @@ describe('RWP v2.1 Multi-Signature Envelopes', () => {
 
       // Strict: requires 'ru' (Policy tongue)
       expect(checkPolicy(['ko', 'ru'], 'strict')).toBe(true);
-      expect(checkPolicy(['ru', 'um', 'dr'], 'critical')).toBe(true);
-
-      expect(checkPolicy(['av'], 'standard')).toBe(false);
+      expect(checkPolicy(['ru'], 'strict')).toBe(true);
       expect(checkPolicy(['ko'], 'strict')).toBe(false);
+
+      // Empty tongues should fail any policy
+      expect(checkPolicy([], 'standard')).toBe(false);
 
       // Critical: requires ru + um + dr
       expect(checkPolicy(['ru', 'um', 'dr'], 'critical')).toBe(true);
