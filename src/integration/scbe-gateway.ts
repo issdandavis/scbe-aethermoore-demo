@@ -12,7 +12,20 @@
  * @module integration/scbe-gateway
  */
 
-import { harmonicScale, hyperbolicDistance, projectToBall } from '../harmonic/index.js';
+import { hyperbolicDistance, projectToBall } from '../harmonic/index.js';
+
+/**
+ * Harmonic amplification for continuous distance values
+ * H(d, R) = R^(d²) where d is the scaled hyperbolic distance
+ *
+ * Unlike the discrete harmonicScale, this works with floating-point distances.
+ */
+function continuousHarmonicScale(distance: number, R: number): number {
+  // Scale distance: trusted agents are near 0, hostile agents are near boundary (>1)
+  // Use the square of distance for exponential amplification
+  const d2 = distance * distance;
+  return Math.pow(R, d2);
+}
 
 // Physics Simulator API endpoint
 const PHYSICS_TRAP_API = process.env.PHYSICS_TRAP_API ||
@@ -90,8 +103,9 @@ export class SCBEGateway {
     // Calculate hyperbolic distance from origin (trusted center)
     const distance = hyperbolicDistance(projectedPosition, this.originPosition);
 
-    // Apply harmonic scaling: H(d,R) = R^(d²)
-    const H = harmonicScale(distance, this.baseRadius);
+    // Apply continuous harmonic scaling: H(d,R) = R^(d²)
+    // Uses continuous distance instead of discrete dimension
+    const H = continuousHarmonicScale(distance, this.baseRadius);
 
     // Base risk from action type
     const baseRisk = this.calculateBaseRisk(request.action);
