@@ -144,24 +144,77 @@ python symphonic_cipher/scbe_aethermoore/axiom_grouped/langues_metric.py
 
 ---
 
-## Quick Start (For Non-Coders)
+## 🚀 Quick Start - Try It Now!
 
-**What this does:** Protects your data using math, geometry, and quantum-safe encryption.
+**Run the complete AI Agent Governance system in 3 steps:**
+
+### Step 1: Install & Start the API
 
 ```bash
-# 1. Install dependencies
-pip install -r requirements.txt
+# Clone and install
+git clone https://github.com/issdandavis/scbe-aethermoore-demo.git
+cd scbe-aethermoore-demo
+pip install fastapi uvicorn pydantic
 
-# 2. Test everything works (should see "84 passed")
-pip install pytest && python -m pytest tests/test_pqc.py -v
+# Start the API server
+SCBE_API_KEY=demo-key uvicorn api.main:app --host 0.0.0.0 --port 8080
+```
 
-# 3. Try it out
-python -c "
-from symphonic_cipher.scbe_aethermoore.qc_lattice import quick_validate
-result = quick_validate('user123', 'read_data')
-print(f'Decision: {result.decision.value}')
-print(f'Confidence: {result.confidence:.0%}')
-"
+### Step 2: Run a Fleet Scenario
+
+Open another terminal and run:
+
+```bash
+# Option A: Use the demo script
+python demos/run_fleet_scenario.py --scenario security-audit
+
+# Option B: Use curl directly
+curl -X POST http://localhost:8080/v1/fleet/run-scenario \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: demo-key" \
+  -d '{
+    "scenario_name": "quick-demo",
+    "agents": [
+      {"agent_id": "analyst-001", "name": "Trusted Analyst", "role": "analyst", "trust": 0.85},
+      {"agent_id": "intern-001", "name": "New Intern", "role": "intern", "trust": 0.30}
+    ],
+    "actions": [
+      {"agent_id": "analyst-001", "action": "READ", "target": "reports", "sensitivity": "low"},
+      {"agent_id": "intern-001", "action": "WRITE", "target": "production_db", "sensitivity": "high"}
+    ]
+  }'
+```
+
+### Step 3: See the Results
+
+```
+Summary:
+  ALLOW        1 ✓  (analyst reading low-sensitivity data)
+  DENY         1 ✗  (intern blocked from high-sensitivity write)
+
+The 14-layer SCBE pipeline evaluated each action:
+- Harmonic scaling: H(d,R) = R^(d²)
+- Hyperbolic geometry distance checks
+- Trust × sensitivity risk calculation
+```
+
+### 📖 Available Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /v1/fleet/run-scenario` | Run a complete fleet governance scenario |
+| `POST /v1/authorize` | Single authorization decision |
+| `POST /v1/agents` | Register a new agent |
+| `GET /v1/health` | API health check |
+| `GET /docs` | Interactive API documentation |
+
+### Available Demo Scenarios
+
+```bash
+python demos/run_fleet_scenario.py --scenario security-audit    # Security team operations
+python demos/run_fleet_scenario.py --scenario fraud-detection   # Fraud detection agents
+python demos/run_fleet_scenario.py --scenario data-pipeline     # ETL pipeline agents
+python demos/run_fleet_scenario.py --all                        # Run all scenarios
 ```
 
 ---

@@ -173,6 +173,71 @@ class HealthResponse(BaseModel):
 
 
 # =============================================================================
+# Fleet Scenario Models
+# =============================================================================
+
+class FleetAgentConfig(BaseModel):
+    """Configuration for an agent in a fleet scenario"""
+    agent_id: str = Field(..., description="Unique agent identifier")
+    name: str = Field(..., description="Agent display name")
+    role: str = Field(default="worker", description="Agent role (worker, supervisor, auditor)")
+    trust: float = Field(default=0.5, ge=0.0, le=1.0, description="Initial trust score")
+
+
+class FleetAction(BaseModel):
+    """An action to be performed in the fleet scenario"""
+    agent_id: str = Field(..., description="Agent performing the action")
+    action: str = Field(..., description="Action type (READ, WRITE, EXECUTE, DELETE)")
+    target: str = Field(..., description="Target resource")
+    sensitivity: str = Field(default="medium", description="Sensitivity level (low, medium, high, critical)")
+
+
+class FleetScenarioRequest(BaseModel):
+    """Request to run a fleet scenario"""
+    scenario_name: str = Field(default="default", description="Name of this scenario")
+    agents: List[FleetAgentConfig] = Field(..., description="List of agents to register")
+    actions: List[FleetAction] = Field(..., description="List of actions to process")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "scenario_name": "security-audit-demo",
+                "agents": [
+                    {"agent_id": "analyst-001", "name": "Data Analyst", "role": "analyst", "trust": 0.8},
+                    {"agent_id": "intern-001", "name": "New Intern", "role": "intern", "trust": 0.3},
+                    {"agent_id": "admin-001", "name": "System Admin", "role": "admin", "trust": 0.95}
+                ],
+                "actions": [
+                    {"agent_id": "analyst-001", "action": "READ", "target": "user_analytics", "sensitivity": "medium"},
+                    {"agent_id": "intern-001", "action": "WRITE", "target": "production_db", "sensitivity": "high"},
+                    {"agent_id": "admin-001", "action": "DELETE", "target": "audit_logs", "sensitivity": "critical"}
+                ]
+            }
+        }
+
+
+class FleetDecision(BaseModel):
+    """Decision result for a single action"""
+    agent_id: str
+    action: str
+    target: str
+    decision: str
+    score: float
+    reason: str
+
+
+class FleetScenarioResponse(BaseModel):
+    """Response from running a fleet scenario"""
+    scenario_name: str
+    timestamp: str
+    agents_registered: int
+    actions_processed: int
+    summary: Dict[str, int]  # {"ALLOW": N, "DENY": M, "QUARANTINE": K}
+    decisions: List[FleetDecision]
+    metrics: Dict[str, Any]
+
+
+# =============================================================================
 # Authentication
 # =============================================================================
 
@@ -456,6 +521,120 @@ async def get_agent(
         raise HTTPException(status_code=404, detail="Agent not found")
 
     return AgentResponse(**AGENTS_STORE[agent_id])
+
+
+# =============================================================================
+# Fleet Scenario Endpoint
+# =============================================================================
+
+@app.post("/v1/fleet/run-scenario", response_model=FleetScenarioResponse, tags=["Fleet"])
+async def run_fleet_scenario(
+    request: FleetScenarioRequest,
+    tenant: str = Depends(verify_api_key)
+):
+    """
+    Run a complete fleet scenario through the SCBE 14-layer pipeline.
+
+    This is the main demonstration endpoint that shows the entire system working:
+    1. Register all agents with their trust scores
+    2. Process each action through the 14-layer SCBE pipeline
+    3. Return aggregated results and metrics
+
+    Use this to demonstrate the fleet governance system end-to-end.
+    """
+    start_time = time.time()
+
+    # Step 1: Register all agents
+    for agent_config in request.agents:
+        AGENTS_STORE[agent_config.agent_id] = {
+            "agent_id": agent_config.agent_id,
+            "name": agent_config.name,
+            "role": agent_config.role,
+            "trust_score": agent_config.trust,
+            "created_at": datetime.utcnow().isoformat() + "Z",
+            "last_activity": None,
+            "decision_count": 0
+        }
+
+    # Step 2: Process each action through SCBE pipeline
+    decisions = []
+    summary = {"ALLOW": 0, "DENY": 0, "QUARANTINE": 0}
+
+    for action in request.actions:
+        # Get agent trust score
+        agent = AGENTS_STORE.get(action.agent_id)
+        if not agent:
+            decisions.append(FleetDecision(
+                agent_id=action.agent_id,
+                action=action.action,
+                target=action.target,
+                decision="DENY",
+                score=0.0,
+                reason="Agent not registered"
+            ))
+            summary["DENY"] += 1
+            continue
+
+        trust_score = agent["trust_score"]
+
+        # Handle sensitivity as string or float
+        sensitivity_map = {"low": 0.2, "medium": 0.5, "high": 0.8, "critical": 1.0}
+        sensitivity = sensitivity_map.get(action.sensitivity.lower(), 0.5)
+
+        # Run through 14-layer pipeline
+        decision, score, explanation = scbe_14_layer_pipeline(
+            agent_id=action.agent_id,
+            action=action.action,
+            target=action.target,
+            trust_score=trust_score,
+            sensitivity=sensitivity
+        )
+
+        # Extract key reason from explanation
+        reason = f"L12: {explanation['layers'].get('L12', 'N/A')}, Score: {score:.3f}"
+
+        decisions.append(FleetDecision(
+            agent_id=action.agent_id,
+            action=action.action,
+            target=action.target,
+            decision=decision,
+            score=round(score, 3),
+            reason=reason
+        ))
+        summary[decision] += 1
+
+        # Update agent stats
+        AGENTS_STORE[action.agent_id]["last_activity"] = datetime.utcnow().isoformat() + "Z"
+        AGENTS_STORE[action.agent_id]["decision_count"] += 1
+
+    # Step 3: Calculate metrics
+    elapsed_ms = (time.time() - start_time) * 1000
+    avg_score = sum(d.score for d in decisions) / len(decisions) if decisions else 0
+
+    logger.info(json.dumps({
+        "event": "fleet_scenario_completed",
+        "scenario": request.scenario_name,
+        "agents": len(request.agents),
+        "actions": len(request.actions),
+        "summary": summary,
+        "latency_ms": round(elapsed_ms, 2)
+    }))
+
+    return FleetScenarioResponse(
+        scenario_name=request.scenario_name,
+        timestamp=datetime.utcnow().isoformat() + "Z",
+        agents_registered=len(request.agents),
+        actions_processed=len(request.actions),
+        summary=summary,
+        decisions=decisions,
+        metrics={
+            "latency_ms": round(elapsed_ms, 2),
+            "avg_score": round(avg_score, 3),
+            "allow_rate": round(summary["ALLOW"] / len(decisions) * 100, 1) if decisions else 0,
+            "deny_rate": round(summary["DENY"] / len(decisions) * 100, 1) if decisions else 0,
+            "quarantine_rate": round(summary["QUARANTINE"] / len(decisions) * 100, 1) if decisions else 0
+        }
+    )
 
 
 @app.post("/v1/consensus", response_model=ConsensusResponse, tags=["Governance"])
