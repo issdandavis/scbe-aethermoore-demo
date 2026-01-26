@@ -758,6 +758,350 @@ async def list_audit_logs(
 
 
 # =============================================================================
+# Fleet Scenario Models & Endpoint
+# =============================================================================
+
+class FleetAgentDef(BaseModel):
+    """Definition of an agent in a fleet scenario."""
+    agent_id: str = Field(..., description="Unique agent identifier")
+    name: str = Field(..., description="Human-readable name")
+    role: str = Field(default="worker", description="Agent role (captain, developer, qa, etc.)")
+    trust_score: float = Field(default=0.5, ge=0.0, le=1.0, description="Initial trust score")
+    governance_tier: str = Field(default="RU", description="Max governance tier (KO, AV, RU, CA, UM, DR)")
+    capabilities: List[str] = Field(default=[], description="Agent capabilities")
+
+
+class FleetActionDef(BaseModel):
+    """An action to evaluate in the scenario."""
+    agent_id: str = Field(..., description="Which agent performs this action")
+    action: str = Field(..., description="Action type (READ, WRITE, EXECUTE, DEPLOY, DELETE)")
+    target: str = Field(..., description="Target resource")
+    sensitivity: float = Field(default=0.5, ge=0.0, le=1.0, description="Action sensitivity")
+    requires_consensus: bool = Field(default=False, description="Require multi-agent approval")
+    context: Optional[Dict[str, Any]] = Field(default={}, description="Additional context")
+
+
+class FleetScenarioRequest(BaseModel):
+    """Full fleet scenario to execute."""
+    scenario_name: str = Field(default="unnamed", description="Scenario identifier")
+    agents: List[FleetAgentDef] = Field(..., description="Agents participating in scenario")
+    actions: List[FleetActionDef] = Field(..., description="Actions to evaluate")
+    consensus_threshold: float = Field(default=0.67, ge=0.5, le=1.0, description="Required consensus ratio")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "scenario_name": "security-test-001",
+                "agents": [
+                    {"agent_id": "codegen-001", "name": "CodeGen-GPT4", "role": "developer", "trust_score": 0.7},
+                    {"agent_id": "security-001", "name": "Security-Claude", "role": "security", "trust_score": 0.8},
+                    {"agent_id": "deploy-001", "name": "Deploy-Bot", "role": "deployer", "trust_score": 0.6}
+                ],
+                "actions": [
+                    {"agent_id": "codegen-001", "action": "WRITE", "target": "src/main.py", "sensitivity": 0.4},
+                    {"agent_id": "security-001", "action": "READ", "target": "secrets/api_keys", "sensitivity": 0.9},
+                    {"agent_id": "deploy-001", "action": "EXECUTE", "target": "production_deploy", "sensitivity": 0.8, "requires_consensus": True}
+                ],
+                "consensus_threshold": 0.67
+            }
+        }
+
+
+class FleetActionResult(BaseModel):
+    """Result for a single action."""
+    agent_id: str
+    action: str
+    target: str
+    decision: str
+    score: float
+    explanation: Dict[str, Any]
+    consensus_result: Optional[Dict[str, Any]] = None
+    token: Optional[str] = None
+
+
+class FleetScenarioResponse(BaseModel):
+    """Response from running a fleet scenario."""
+    scenario_id: str
+    scenario_name: str
+    timestamp: str
+
+    # Summary counts
+    total_actions: int
+    allowed: int
+    quarantined: int
+    denied: int
+
+    # Rates
+    allow_rate: float
+    deny_rate: float
+
+    # Detailed results
+    results: List[FleetActionResult]
+
+    # Fleet health at end
+    fleet_health: Dict[str, Any]
+
+    # Execution metadata
+    execution_time_ms: float
+
+
+# Six Sacred Tongues - governance tiers from Spiralverse Protocol
+GOVERNANCE_TIERS = {
+    "KO": {"min_trust": 0.1, "tongues_required": 1, "actions": ["READ", "LIST", "QUERY"]},
+    "AV": {"min_trust": 0.3, "tongues_required": 2, "actions": ["CREATE", "UPDATE", "WRITE"]},
+    "RU": {"min_trust": 0.5, "tongues_required": 3, "actions": ["EXECUTE", "TEST", "RUN"]},
+    "CA": {"min_trust": 0.7, "tongues_required": 4, "actions": ["DEPLOY", "RELEASE", "BUILD"]},
+    "UM": {"min_trust": 0.85, "tongues_required": 5, "actions": ["CONFIGURE", "MANAGE", "ADMIN"]},
+    "DR": {"min_trust": 0.95, "tongues_required": 6, "actions": ["DELETE", "DESTROY", "TERMINATE"]}
+}
+
+
+def classify_action_tier(action: str) -> str:
+    """Classify an action to its governance tier."""
+    action_upper = action.upper()
+    for tier, config in GOVERNANCE_TIERS.items():
+        if action_upper in config["actions"]:
+            return tier
+    # Default to RU for unknown actions
+    return "RU"
+
+
+def agent_meets_tier(trust_score: float, tier: str) -> bool:
+    """Check if agent trust meets tier requirements."""
+    return trust_score >= GOVERNANCE_TIERS.get(tier, {"min_trust": 0.5})["min_trust"]
+
+
+@app.post("/v1/fleet/run-scenario", response_model=FleetScenarioResponse, tags=["Fleet"])
+async def run_fleet_scenario(
+    request: FleetScenarioRequest,
+    tenant: str = Depends(verify_api_key)
+):
+    """
+    Execute a complete fleet scenario.
+
+    This endpoint:
+    1. Registers all agents in the scenario (or updates existing)
+    2. Evaluates each action through the 14-layer SCBE pipeline
+    3. Handles consensus requirements for sensitive actions
+    4. Returns aggregated results showing which agents got allowed/quarantined/denied
+
+    Use this to demonstrate end-to-end fleet governance.
+    """
+    start_time = time.time()
+    scenario_id = f"scenario_{uuid.uuid4().hex[:12]}"
+
+    results: List[FleetActionResult] = []
+    allowed = 0
+    quarantined = 0
+    denied = 0
+
+    # Step 1: Register or update all agents
+    fleet_agents = {}
+    for agent_def in request.agents:
+        if agent_def.agent_id not in AGENTS_STORE:
+            AGENTS_STORE[agent_def.agent_id] = {
+                "agent_id": agent_def.agent_id,
+                "name": agent_def.name,
+                "role": agent_def.role,
+                "trust_score": agent_def.trust_score,
+                "governance_tier": agent_def.governance_tier,
+                "capabilities": agent_def.capabilities,
+                "created_at": datetime.utcnow().isoformat(),
+                "decision_count": 0
+            }
+        else:
+            # Update trust score if different
+            AGENTS_STORE[agent_def.agent_id]["trust_score"] = agent_def.trust_score
+
+        fleet_agents[agent_def.agent_id] = AGENTS_STORE[agent_def.agent_id]
+
+    logger.info(json.dumps({
+        "event": "fleet_scenario_start",
+        "scenario_id": scenario_id,
+        "scenario_name": request.scenario_name,
+        "agent_count": len(request.agents),
+        "action_count": len(request.actions)
+    }))
+
+    # Step 2: Process each action
+    for action_def in request.actions:
+        agent = fleet_agents.get(action_def.agent_id)
+        if not agent:
+            # Skip actions for unregistered agents
+            results.append(FleetActionResult(
+                agent_id=action_def.agent_id,
+                action=action_def.action,
+                target=action_def.target,
+                decision="DENY",
+                score=0.0,
+                explanation={"error": "Agent not registered in scenario"}
+            ))
+            denied += 1
+            continue
+
+        trust_score = agent["trust_score"]
+        sensitivity = action_def.sensitivity
+
+        # Check governance tier
+        required_tier = classify_action_tier(action_def.action)
+        tier_met = agent_meets_tier(trust_score, required_tier)
+
+        # Run 14-layer pipeline
+        decision, score, explanation = scbe_14_layer_pipeline(
+            agent_id=action_def.agent_id,
+            action=action_def.action,
+            target=action_def.target,
+            trust_score=trust_score,
+            sensitivity=sensitivity
+        )
+
+        # Add tier check to explanation
+        explanation["governance_tier"] = {
+            "required": required_tier,
+            "agent_meets_requirement": tier_met,
+            "min_trust_required": GOVERNANCE_TIERS.get(required_tier, {}).get("min_trust", 0.5)
+        }
+
+        # Override decision if tier not met
+        if not tier_met and decision == Decision.ALLOW:
+            decision = Decision.QUARANTINE
+            explanation["tier_override"] = f"Trust {trust_score:.2f} below {required_tier} tier minimum"
+
+        consensus_result = None
+
+        # Step 3: Handle consensus if required
+        if action_def.requires_consensus and decision != Decision.DENY:
+            # Get other agents to vote
+            voters = [a for aid, a in fleet_agents.items() if aid != action_def.agent_id]
+            if len(voters) >= 2:
+                votes_for = 0
+                votes_against = 0
+                vote_details = []
+
+                for voter in voters:
+                    # Each voter evaluates the action
+                    voter_decision, voter_score, _ = scbe_14_layer_pipeline(
+                        agent_id=voter["agent_id"],
+                        action=f"APPROVE_{action_def.action}",
+                        target=action_def.target,
+                        trust_score=voter["trust_score"],
+                        sensitivity=sensitivity * 0.8  # Voters have slightly lower sensitivity
+                    )
+
+                    approved = voter_decision in (Decision.ALLOW, Decision.QUARANTINE)
+                    if approved:
+                        votes_for += 1
+                    else:
+                        votes_against += 1
+
+                    vote_details.append({
+                        "voter_id": voter["agent_id"],
+                        "approved": approved,
+                        "score": round(voter_score, 3)
+                    })
+
+                total_votes = votes_for + votes_against
+                approval_rate = votes_for / total_votes if total_votes > 0 else 0
+                consensus_reached = approval_rate >= request.consensus_threshold
+
+                consensus_result = {
+                    "required_threshold": request.consensus_threshold,
+                    "approval_rate": round(approval_rate, 3),
+                    "votes_for": votes_for,
+                    "votes_against": votes_against,
+                    "consensus_reached": consensus_reached,
+                    "votes": vote_details
+                }
+
+                # Adjust decision based on consensus
+                if not consensus_reached:
+                    if decision == Decision.ALLOW:
+                        decision = Decision.QUARANTINE
+                        explanation["consensus_override"] = "Consensus not reached"
+
+        # Generate token for allowed actions
+        token = None
+        if decision == Decision.ALLOW:
+            decision_id = f"dec_{uuid.uuid4().hex[:8]}"
+            token = generate_token(decision_id, action_def.agent_id, action_def.action)
+
+        # Track counts
+        if decision == Decision.ALLOW:
+            allowed += 1
+        elif decision == Decision.QUARANTINE:
+            quarantined += 1
+        else:
+            denied += 1
+
+        results.append(FleetActionResult(
+            agent_id=action_def.agent_id,
+            action=action_def.action,
+            target=action_def.target,
+            decision=decision.value,
+            score=round(score, 3),
+            explanation=explanation,
+            consensus_result=consensus_result,
+            token=token
+        ))
+
+        # Update agent stats
+        agent["decision_count"] = agent.get("decision_count", 0) + 1
+        agent["last_activity"] = datetime.utcnow().isoformat()
+
+    # Calculate execution time
+    execution_time_ms = round((time.time() - start_time) * 1000, 2)
+
+    # Calculate rates
+    total = allowed + quarantined + denied
+    allow_rate = allowed / total if total > 0 else 0
+    deny_rate = denied / total if total > 0 else 0
+
+    # Fleet health summary
+    fleet_health = {
+        "total_agents": len(fleet_agents),
+        "agents_by_role": {},
+        "avg_trust_score": 0.0,
+        "agents_below_threshold": 0
+    }
+
+    trust_sum = 0
+    for agent in fleet_agents.values():
+        role = agent.get("role", "unknown")
+        fleet_health["agents_by_role"][role] = fleet_health["agents_by_role"].get(role, 0) + 1
+        trust_sum += agent["trust_score"]
+        if agent["trust_score"] < 0.5:
+            fleet_health["agents_below_threshold"] += 1
+
+    fleet_health["avg_trust_score"] = round(trust_sum / len(fleet_agents), 3) if fleet_agents else 0
+    fleet_health["healthy"] = fleet_health["agents_below_threshold"] == 0 and deny_rate < 0.5
+
+    logger.info(json.dumps({
+        "event": "fleet_scenario_complete",
+        "scenario_id": scenario_id,
+        "scenario_name": request.scenario_name,
+        "allowed": allowed,
+        "quarantined": quarantined,
+        "denied": denied,
+        "execution_time_ms": execution_time_ms
+    }))
+
+    return FleetScenarioResponse(
+        scenario_id=scenario_id,
+        scenario_name=request.scenario_name,
+        timestamp=datetime.utcnow().isoformat() + "Z",
+        total_actions=total,
+        allowed=allowed,
+        quarantined=quarantined,
+        denied=denied,
+        allow_rate=round(allow_rate, 3),
+        deny_rate=round(deny_rate, 3),
+        results=results,
+        fleet_health=fleet_health,
+        execution_time_ms=execution_time_ms
+    )
+
+
+# =============================================================================
 # Startup
 # =============================================================================
 

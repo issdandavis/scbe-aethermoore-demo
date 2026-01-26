@@ -245,6 +245,146 @@ When you run `python demo_memory_shard.py`, you'll see:
 [4] Memory retrieved successfully.
 ```
 
+---
+
+## How to Try It: Fleet Scenario Demo
+
+The **Fleet Scenario API** lets you simulate an entire multi-agent workflow in one request. This is the "whole body" demo - register agents, run actions through SCBE governance, and see who gets ALLOW / QUARANTINE / DENY.
+
+### Quick Start
+
+```bash
+# 1. Start the API server
+export SCBE_API_KEY=demo-key-123
+python -m uvicorn api.main:app --host 0.0.0.0 --port 8080
+
+# 2. Run a fleet scenario (in another terminal)
+curl -X POST http://localhost:8080/v1/fleet/run-scenario \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: demo-key-123" \
+  -d @- << 'EOF'
+{
+  "scenario_name": "security-test-001",
+  "agents": [
+    {"agent_id": "codegen-001", "name": "CodeGen-GPT4", "role": "developer", "trust_score": 0.7},
+    {"agent_id": "security-001", "name": "Security-Claude", "role": "security", "trust_score": 0.85},
+    {"agent_id": "deploy-001", "name": "Deploy-Bot", "role": "deployer", "trust_score": 0.6}
+  ],
+  "actions": [
+    {"agent_id": "codegen-001", "action": "WRITE", "target": "src/main.py", "sensitivity": 0.3},
+    {"agent_id": "security-001", "action": "READ", "target": "secrets/api_keys", "sensitivity": 0.9},
+    {"agent_id": "deploy-001", "action": "DEPLOY", "target": "production", "sensitivity": 0.8, "requires_consensus": true}
+  ],
+  "consensus_threshold": 0.67
+}
+EOF
+```
+
+### Expected Output
+
+```json
+{
+  "scenario_id": "scenario_a3f7b2c1d4e5",
+  "scenario_name": "security-test-001",
+  "total_actions": 3,
+  "allowed": 2,
+  "quarantined": 1,
+  "denied": 0,
+  "allow_rate": 0.667,
+  "deny_rate": 0.0,
+  "results": [
+    {
+      "agent_id": "codegen-001",
+      "action": "WRITE",
+      "decision": "ALLOW",
+      "score": 0.712,
+      "token": "scbe_a3f7b2c1_dec_..."
+    },
+    {
+      "agent_id": "security-001",
+      "action": "READ",
+      "decision": "QUARANTINE",
+      "score": 0.451,
+      "explanation": { "tier_override": "High sensitivity action" }
+    },
+    {
+      "agent_id": "deploy-001",
+      "action": "DEPLOY",
+      "decision": "ALLOW",
+      "score": 0.623,
+      "consensus_result": {
+        "approval_rate": 0.75,
+        "votes_for": 2,
+        "votes_against": 0,
+        "consensus_reached": true
+      }
+    }
+  ],
+  "fleet_health": {
+    "total_agents": 3,
+    "avg_trust_score": 0.717,
+    "healthy": true
+  },
+  "execution_time_ms": 12.4
+}
+```
+
+### What's Happening
+
+1. **Agents registered** - Each agent gets a trust score and governance tier
+2. **Actions evaluated** - Each action runs through the 14-layer SCBE pipeline
+3. **Governance tiers applied** - Actions map to Sacred Tongue tiers (KO→DR)
+   - `READ/LIST/QUERY` → KO (trust ≥ 0.1)
+   - `WRITE/UPDATE` → AV (trust ≥ 0.3)
+   - `EXECUTE/RUN` → RU (trust ≥ 0.5)
+   - `DEPLOY/RELEASE` → CA (trust ≥ 0.7)
+   - `CONFIGURE/ADMIN` → UM (trust ≥ 0.85)
+   - `DELETE/DESTROY` → DR (trust ≥ 0.95)
+4. **Consensus (optional)** - Sensitive actions get voted on by other agents
+5. **Results aggregated** - Full audit trail with tokens for allowed actions
+
+### Scenario JSON Format
+
+```typescript
+{
+  "scenario_name": string,        // Identifier for logging
+  "agents": [
+    {
+      "agent_id": string,         // Unique ID
+      "name": string,             // Display name
+      "role": string,             // captain, developer, security, etc.
+      "trust_score": number,      // 0.0 to 1.0
+      "governance_tier": string,  // KO, AV, RU, CA, UM, DR
+      "capabilities": string[]    // Optional capability tags
+    }
+  ],
+  "actions": [
+    {
+      "agent_id": string,         // Which agent performs this
+      "action": string,           // READ, WRITE, EXECUTE, DEPLOY, DELETE
+      "target": string,           // Resource being accessed
+      "sensitivity": number,      // 0.0 to 1.0 (higher = riskier)
+      "requires_consensus": bool, // Other agents vote?
+      "context": object           // Optional extra context
+    }
+  ],
+  "consensus_threshold": number   // 0.5 to 1.0 (default 0.67)
+}
+```
+
+### Integration with Spiralverse Protocol
+
+The fleet scenario endpoint bridges **SCBE-AETHERMOORE** (security/governance) with **Spiralverse Protocol** (AI-to-AI communication):
+
+- **Six Sacred Tongues** map to governance tiers (trust thresholds)
+- **6D Trust Vectors** feed into hyperbolic distance calculations
+- **Roundtable consensus** uses Byzantine-resilient voting
+- **Polly Pads** track agent XP and progression (TypeScript layer)
+
+See `spiralverse-protocol/` submodule for the full protocol spec.
+
+---
+
 ## Additional Commands
 
 ### Generate Proof Pack
