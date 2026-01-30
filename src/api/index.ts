@@ -47,15 +47,11 @@ import {
   getRequiredTongues,
   suggestPolicy,
   type Keyring,
-  type RWP2MultiEnvelope,
+  type RWPEnvelope,
   type TongueID,
   type PolicyLevel,
-  type VerificationOptions,
+  type VerifyOptions,
 } from '../spiralverse/index.js';
-
-// Re-export with legacy names for backwards compatibility
-export type RWPEnvelope = RWP2MultiEnvelope;
-export type VerifyOptions = VerificationOptions;
 
 // ============================================================
 // Types

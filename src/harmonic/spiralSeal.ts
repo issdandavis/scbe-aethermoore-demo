@@ -24,6 +24,16 @@ import {
   getTongueForSection,
 } from './sacredTongues.js';
 
+/**
+ * Helper to convert Uint8Array to BufferSource-compatible ArrayBuffer
+ * TypeScript 5.9+ strict mode requires explicit ArrayBuffer for Web Crypto APIs
+ */
+function toBufferSource(arr: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(arr.length);
+  copy.set(arr);
+  return copy.buffer;
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Sacred Tongue Tokenizer
 // ═══════════════════════════════════════════════════════════════
@@ -279,17 +289,21 @@ async function hkdfDerive(
   }
 
   // Import master secret as HKDF key
-  const keyMaterial = await crypto.subtle.importKey('raw', masterSecret, 'HKDF', false, [
-    'deriveBits',
-  ]);
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    toBufferSource(masterSecret),
+    'HKDF',
+    false,
+    ['deriveBits']
+  );
 
   // Derive key using HKDF
   const derivedBits = await crypto.subtle.deriveBits(
     {
       name: 'HKDF',
       hash: 'SHA-256',
-      salt: salt,
-      info: info,
+      salt: toBufferSource(salt),
+      info: toBufferSource(info),
     },
     keyMaterial,
     length * 8
@@ -311,17 +325,23 @@ async function aesGcmEncrypt(
     throw new Error('Web Crypto API not available');
   }
 
-  const cryptoKey = await crypto.subtle.importKey('raw', key, 'AES-GCM', false, ['encrypt']);
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    toBufferSource(key),
+    'AES-GCM',
+    false,
+    ['encrypt']
+  );
 
   const result = await crypto.subtle.encrypt(
     {
       name: 'AES-GCM',
-      iv: nonce,
-      additionalData: aad,
+      iv: toBufferSource(nonce),
+      additionalData: toBufferSource(aad),
       tagLength: 128,
     },
     cryptoKey,
-    plaintext
+    toBufferSource(plaintext)
   );
 
   // Result includes ciphertext + tag (last 16 bytes)
@@ -346,7 +366,13 @@ async function aesGcmDecrypt(
     throw new Error('Web Crypto API not available');
   }
 
-  const cryptoKey = await crypto.subtle.importKey('raw', key, 'AES-GCM', false, ['decrypt']);
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    toBufferSource(key),
+    'AES-GCM',
+    false,
+    ['decrypt']
+  );
 
   // Combine ciphertext + tag for Web Crypto
   const combined = new Uint8Array(ciphertext.length + tag.length);
@@ -356,12 +382,12 @@ async function aesGcmDecrypt(
   const result = await crypto.subtle.decrypt(
     {
       name: 'AES-GCM',
-      iv: nonce,
-      additionalData: aad,
+      iv: toBufferSource(nonce),
+      additionalData: toBufferSource(aad),
       tagLength: 128,
     },
     cryptoKey,
-    combined
+    toBufferSource(combined)
   );
 
   return new Uint8Array(result);
