@@ -35,8 +35,16 @@ jobs:
   sync-to-gumroad:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event.inputs.sync_direction != 'from-gumroad'
-    
+    continue-on-error: true
+
     steps:
+      - name: Check for CROSS_REPO_TOKEN
+        run: |
+          if [ -z "${{ secrets.CROSS_REPO_TOKEN }}" ]; then
+            echo "::warning::CROSS_REPO_TOKEN not configured, skipping sync"
+            exit 0
+          fi
+
       - name: Checkout scbe-aethermoore-demo
         uses: actions/checkout@v4
         with:
@@ -50,6 +58,7 @@ jobs:
           token: ${{ secrets.CROSS_REPO_TOKEN }}
           path: target
           fetch-depth: 0
+        continue-on-error: true
 
       - name: Sync symphonic_cipher to gumroad
         run: |
@@ -117,6 +126,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [sync-to-gumroad]
     if: success()
+    continue-on-error: true
     
     steps:
       - name: Checkout gumroad-automation-demo
