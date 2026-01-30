@@ -56,7 +56,10 @@ jobs:
       matrix:
         # scipy>=1.14.0 requires Python 3.10+
         python-version: ['3.10', '3.11', '3.12']
-    
+
+    env:
+      OQS_INSTALL_DIR: /usr/local
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
