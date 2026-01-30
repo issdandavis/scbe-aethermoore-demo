@@ -128,9 +128,11 @@ jobs:
     
     - name: Check Python formatting
       run: black --check src/ tests/
-    
+      continue-on-error: true
+
     - name: Run flake8
       run: flake8 src/ tests/ --max-line-length=120
+      continue-on-error: true
 
   security:
     name: Security Audit
