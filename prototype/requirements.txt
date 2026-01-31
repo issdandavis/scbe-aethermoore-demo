@@ -2,6 +2,7 @@
 
 # Core
 numpy>=1.24.0
+scipy>=1.11.0
 
 # Visualization
 matplotlib>=3.7.0
@@ -9,6 +10,21 @@ plotly>=5.18.0
 
 # Interactive demo
 streamlit>=1.29.0
+
+# Hyperbolic Geometry (Poincaré ball, Möbius operations)
+geoopt>=0.5.0
+
+# Neural ODEs (flux dynamics, swarm evolution)
+torch>=2.0.0
+torchdiffeq>=0.2.4
+
+# Evolutionary Algorithms (policy optimization)
+deap>=1.4.0
+pyswarms>=1.3.0
+
+# Post-Quantum Cryptography (optional - requires liboqs C library)
+# liboqs-python>=0.14.0
+# pqcrypto>=0.3.4
 
 # Optional: For advanced embeddings
 # sentence-transformers>=2.2.0
