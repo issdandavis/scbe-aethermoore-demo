@@ -42,7 +42,7 @@ PHI: float = (1 + np.sqrt(5)) / 2  # 1.6180339887498949...
 # Ratio of 12 pure fifths to 7 octaves: (3/2)^12 / 2^7
 PYTHAGOREAN_COMMA: float = 531441 / 524288  # 1.0136432647705078...
 
-# Six Sacred Tongues with φⁿ weights
+# Six Sacred Tongues with phiⁿ weights
 TONGUE_WEIGHTS: Dict[str, float] = {
     'KO': PHI ** 0,  # 1.000 - Control (Kor'aelin)
     'AV': PHI ** 1,  # 1.618 - Transport (Avali)
@@ -86,7 +86,7 @@ class PoincareBall:
 
     Properties:
         - Unit ball in Rⁿ with metric ds² = 4|dx|² / (1 - |x|²)²
-        - Curvature κ = -1/c² where c is the curvature parameter
+        - Curvature kappa = -1/c² where c is the curvature parameter
         - Geodesics are circular arcs perpendicular to the boundary
         - Boundary (|x| = 1) represents "infinity"
 
@@ -100,7 +100,7 @@ class PoincareBall:
 
         Args:
             dim: Dimension of the ball (2 for visualization, 6 for production)
-            curvature: Curvature parameter c (κ = -1/c²)
+            curvature: Curvature parameter c (kappa = -1/c²)
         """
         self.dim = dim
         self.c = curvature
@@ -111,7 +111,7 @@ class PoincareBall:
         Hyperbolic distance in Poincaré ball.
 
         Formula:
-            d(u,v) = (2/√c) · arctanh(√c · |(-u) ⊕ v|)
+            d(u,v) = (2/√c) · arctanh(√c · |(-u) + v|)
 
         Simplified for c=1:
             d(u,v) = arccosh(1 + 2|u-v|² / ((1-|u|²)(1-|v|²)))
@@ -119,7 +119,7 @@ class PoincareBall:
         Properties:
             - d(u,v) ≥ 0, with equality iff u = v
             - d(u,v) = d(v,u) (symmetric)
-            - d(u,v) → ∞ as u or v → boundary
+            - d(u,v) -> inf as u or v -> boundary
         """
         u = np.asarray(u, dtype=np.float64)
         v = np.asarray(v, dtype=np.float64)
@@ -138,11 +138,11 @@ class PoincareBall:
 
     def mobius_add(self, u: np.ndarray, v: np.ndarray) -> np.ndarray:
         """
-        Möbius addition: u ⊕ v in the Poincaré ball.
+        Möbius addition: u + v in the Poincaré ball.
 
         Formula:
-            u ⊕ v = ((1 + 2c⟨u,v⟩ + c|v|²)u + (1 - c|u|²)v) /
-                    (1 + 2c⟨u,v⟩ + c²|u|²|v|²)
+            u + v = ((1 + 2c<u,v> + c|v|²)u + (1 - c|u|²)v) /
+                    (1 + 2c<u,v> + c²|u|²|v|²)
 
         This is the hyperbolic equivalent of vector addition.
         """
@@ -165,9 +165,9 @@ class PoincareBall:
         Exponential map: move from x in tangent direction v.
 
         Formula:
-            exp_x(v) = x ⊕ (tanh(√c|v|λ_x/2) · v / (√c|v|))
+            exp_x(v) = x + (tanh(√c|v|lambda_x/2) · v / (√c|v|))
 
-        where λ_x = 2 / (1 - c|x|²) is the conformal factor.
+        where lambda_x = 2 / (1 - c|x|²) is the conformal factor.
         """
         c = self.c
         x = np.asarray(x, dtype=np.float64)
@@ -187,7 +187,7 @@ class PoincareBall:
         Logarithmic map: compute tangent vector from x to y.
 
         Formula:
-            log_x(y) = (2 / (√c · λ_x)) · arctanh(√c|(-x) ⊕ y|) · ((-x) ⊕ y) / |(-x) ⊕ y|
+            log_x(y) = (2 / (√c · lambda_x)) · arctanh(√c|(-x) + y|) · ((-x) + y) / |(-x) + y|
 
         This is the inverse of expmap.
         """
@@ -329,7 +329,7 @@ class AgentDynamics:
         """
         Compute Harmonic Wall repulsion force.
 
-        Force = -∇H(r) = -2r · exp(r²) · (x/r)
+        Force = -gradH(r) = -2r · exp(r²) · (x/r)
 
         Pushes agents away from the boundary with exponentially
         increasing strength.
@@ -413,7 +413,7 @@ def harmonic_wall_cost(distance: float, base: float = np.e) -> float:
 
 def harmonic_wall_gradient(position: np.ndarray) -> np.ndarray:
     """
-    Gradient of Harmonic Wall: ∇H = 2r · exp(r²) · (x/r).
+    Gradient of Harmonic Wall: gradH = 2r · exp(r²) · (x/r).
 
     Points radially outward with magnitude increasing exponentially.
     """
@@ -512,9 +512,9 @@ class Vote:
 
 class ByzantineConsensus:
     """
-    Byzantine Fault Tolerant consensus using φ-weighted voting.
+    Byzantine Fault Tolerant consensus using phi-weighted voting.
 
-    The φⁿ weights ensure that higher-authority tongues have
+    The phiⁿ weights ensure that higher-authority tongues have
     exponentially more influence, while still requiring quorum.
 
     Properties:
@@ -546,7 +546,7 @@ class ByzantineConsensus:
 
     def weighted_vote(self, votes: List[Vote]) -> Tuple[VoteType, float]:
         """
-        Aggregate votes using φ-weighted BFT consensus.
+        Aggregate votes using phi-weighted BFT consensus.
 
         Returns:
             (decision, confidence): The consensus decision and confidence level
@@ -568,7 +568,7 @@ class ByzantineConsensus:
 
         # Check quorum
         if total_eligible_weight < self.quorum_fraction * self.total_weight:
-            return VoteType.QUARANTINE, 0.0  # No quorum → quarantine
+            return VoteType.QUARANTINE, 0.0  # No quorum -> quarantine
 
         # Find winner
         max_weight = 0.0
@@ -698,10 +698,10 @@ class SwarmNeuralNetwork:
     The Swarm as a Neural Network.
 
     Architecture:
-        Input Layer: Intent embedding → KO (Control)
-        Hidden Layers: KO → AV → RU → CA (routing)
-        Security Layer: CA → UM (security check)
-        Output Layer: UM → DR (final decision)
+        Input Layer: Intent embedding -> KO (Control)
+        Hidden Layers: KO -> AV -> RU -> CA (routing)
+        Security Layer: CA -> UM (security check)
+        Output Layer: UM -> DR (final decision)
 
     Each layer is a HyperbolicLayer with Möbius operations.
     """
@@ -783,9 +783,9 @@ class UnifiedRiskFunctional:
     R(intent) = α·path_cost + β·network_risk + γ·(1 - consensus_confidence)
 
     Decision thresholds:
-        R < θ_allow → ALLOW
-        θ_allow ≤ R < θ_deny → QUARANTINE
-        R ≥ θ_deny → DENY
+        R < θ_allow -> ALLOW
+        θ_allow ≤ R < θ_deny -> QUARANTINE
+        R ≥ θ_deny -> DENY
     """
 
     def __init__(
@@ -1122,7 +1122,7 @@ def demo():
         if name != 'KO':
             dist = manifold.distance(ko_pos, agent.position)
             cost = harmonic_wall_cost(dist)
-            print(f"   KO → {name}: d={dist:.3f}, H(d)={cost:.2f}")
+            print(f"   KO -> {name}: d={dist:.3f}, H(d)={cost:.2f}")
 
     print("\n3. BFT Consensus Test")
     print("-" * 40)
