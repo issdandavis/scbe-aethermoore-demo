@@ -1,0 +1,122 @@
+name: Auto-Fix Code Style
+
+on:
+  workflow_dispatch:
+    inputs:
+      fix_python:
+        description: 'Fix Python formatting (black)'
+        type: boolean
+        default: true
+      fix_typescript:
+        description: 'Fix TypeScript formatting (prettier)'
+        type: boolean
+        default: true
+      create_pr:
+        description: 'Create PR with fixes'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-fix:
+    name: Auto-Fix Code Style
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        if: inputs.fix_python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Node.js
+        if: inputs.fix_typescript
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Install formatters
+        run: |
+          if [ "${{ inputs.fix_python }}" == "true" ]; then
+            pip install black isort
+          fi
+          if [ "${{ inputs.fix_typescript }}" == "true" ]; then
+            npm install -g prettier
+          fi
+
+      - name: Fix Python formatting
+        if: inputs.fix_python
+        run: |
+          echo "Formatting Python files with black..."
+          black src/ tests/ symphonic_cipher/ aetherauth/ prototype/ --line-length 120 || true
+          echo "Sorting imports with isort..."
+          isort src/ tests/ symphonic_cipher/ aetherauth/ prototype/ --profile black || true
+
+      - name: Fix TypeScript formatting
+        if: inputs.fix_typescript
+        run: |
+          echo "Formatting TypeScript files with prettier..."
+          prettier --write "src/**/*.ts" "tests/**/*.ts" --ignore-unknown || true
+
+      - name: Check for changes
+        id: check-changes
+        run: |
+          if git diff --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No formatting changes needed"
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "Formatting changes detected"
+            git diff --stat
+          fi
+
+      - name: Create PR with fixes
+        if: steps.check-changes.outputs.has_changes == 'true' && inputs.create_pr
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+
+          BRANCH="auto-fix/code-style-$(date +%Y%m%d-%H%M%S)"
+          git checkout -b "$BRANCH"
+          git add -A
+          git commit -m "style: auto-fix code formatting
+
+          Applied automatic formatting:
+          - Black (Python)
+          - isort (Python imports)
+          - Prettier (TypeScript)
+
+          [skip ci]"
+
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --title "style: Auto-fix code formatting" \
+            --body "## Automated Code Formatting
+
+          This PR contains automatic code formatting fixes:
+
+          - **Python**: Black formatting, isort import sorting
+          - **TypeScript**: Prettier formatting
+
+          ---
+          *Generated automatically by Auto-Fix workflow*" \
+            --label "auto-fix,style"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Commit directly (no PR)
+        if: steps.check-changes.outputs.has_changes == 'true' && !inputs.create_pr
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          git add -A
+          git commit -m "style: auto-fix code formatting [skip ci]"
+          git push

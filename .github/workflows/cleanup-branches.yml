@@ -1,0 +1,79 @@
+name: Cleanup Stale Branches
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'  # Run weekly on Sunday at midnight UTC
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (list branches without deleting)'
+        type: boolean
+        default: true
+      max_age_days:
+        description: 'Maximum age in days before branch is considered stale'
+        type: number
+        default: 30
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find and cleanup stale branches
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'true' }}
+          MAX_AGE: ${{ github.event.inputs.max_age_days || '30' }}
+        run: |
+          echo "## Branch Cleanup Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | Last Commit | Age (days) | Action |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------------|------------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          # Protected branches that should never be deleted
+          PROTECTED="main|master|develop|gh-pages|release"
+
+          # Get all remote branches
+          git fetch --prune origin
+
+          CUTOFF_DATE=$(date -d "$MAX_AGE days ago" +%s 2>/dev/null || date -v-${MAX_AGE}d +%s)
+
+          for branch in $(git branch -r | grep -v "HEAD" | sed 's/origin\///' | grep -v -E "^($PROTECTED)$"); do
+            # Skip dependabot branches less than 7 days old
+            if [[ "$branch" == dependabot/* ]]; then
+              BRANCH_AGE_THRESHOLD=7
+            else
+              BRANCH_AGE_THRESHOLD=$MAX_AGE
+            fi
+
+            # Get last commit date
+            LAST_COMMIT=$(git log -1 --format="%ci" "origin/$branch" 2>/dev/null || echo "unknown")
+            if [ "$LAST_COMMIT" == "unknown" ]; then
+              continue
+            fi
+
+            COMMIT_TIMESTAMP=$(date -d "$LAST_COMMIT" +%s 2>/dev/null || date -j -f "%Y-%m-%d %H:%M:%S %z" "$LAST_COMMIT" +%s 2>/dev/null)
+            AGE_DAYS=$(( ($(date +%s) - $COMMIT_TIMESTAMP) / 86400 ))
+
+            # Check if branch is stale
+            if [ $AGE_DAYS -gt $BRANCH_AGE_THRESHOLD ]; then
+              if [ "$DRY_RUN" == "true" ]; then
+                echo "| $branch | ${LAST_COMMIT:0:10} | $AGE_DAYS | Would delete |" >> $GITHUB_STEP_SUMMARY
+                echo "[DRY RUN] Would delete stale branch: $branch (age: $AGE_DAYS days)"
+              else
+                echo "| $branch | ${LAST_COMMIT:0:10} | $AGE_DAYS | Deleted |" >> $GITHUB_STEP_SUMMARY
+                echo "Deleting stale branch: $branch (age: $AGE_DAYS days)"
+                git push origin --delete "$branch" || echo "Failed to delete $branch"
+              fi
+            fi
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*Dry Run: $DRY_RUN | Max Age: $MAX_AGE days*" >> $GITHUB_STEP_SUMMARY

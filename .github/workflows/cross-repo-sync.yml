@@ -40,8 +40,8 @@ jobs:
     steps:
       - name: Check for CROSS_REPO_TOKEN
         run: |
-          if [ -z "${{ secrets.CROSS_REPO_TOKEN }}" ]; then
-            echo "::warning::CROSS_REPO_TOKEN not configured, skipping sync"
+          if [ -z "${{ secrets.CROSS_REPO_SYNCH }}" ]; then
+            echo "::warning::CROSS_REPO_SYNCH not configured, skipping sync"
             exit 0
           fi
 
@@ -55,7 +55,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ env.TARGET_REPO }}
-          token: ${{ secrets.CROSS_REPO_TOKEN }}
+          token: ${{ secrets.CROSS_REPO_SYNCH }}
           path: target
           fetch-depth: 0
         continue-on-error: true
@@ -133,7 +133,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ env.TARGET_REPO }}
-          token: ${{ secrets.CROSS_REPO_TOKEN }}
+          token: ${{ secrets.CROSS_REPO_SYNCH }}
           
       - name: Update SCBE package in SELLABLE_PACKAGES
         run: |

@@ -1,0 +1,92 @@
+name: Setup Repository Labels
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/setup-labels.yml'
+
+permissions:
+  issues: write
+
+jobs:
+  create-labels:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create/Update Labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = [
+              // Type labels
+              { name: 'bug', color: 'd73a4a', description: 'Something isnt working' },
+              { name: 'enhancement', color: 'a2eeef', description: 'New feature or request' },
+              { name: 'documentation', color: '0075ca', description: 'Improvements or additions to documentation' },
+              { name: 'security', color: 'ee0701', description: 'Security related issue or PR' },
+              { name: 'performance', color: 'ff6b6b', description: 'Performance improvements' },
+
+              // Component labels
+              { name: 'core', color: '5319e7', description: 'Core SCBE-AETHERMOORE system' },
+              { name: 'aetherauth', color: '1d76db', description: 'AetherAuth authentication module' },
+              { name: 'quantum', color: 'fbca04', description: 'Quantum-resistant cryptography' },
+              { name: 'typescript', color: '3178c6', description: 'TypeScript code' },
+              { name: 'python', color: '3776ab', description: 'Python code' },
+              { name: 'tests', color: '0e8a16', description: 'Test suite changes' },
+              { name: 'prototype', color: 'c5def5', description: 'Prototype/experimental code' },
+              { name: 'ci/cd', color: 'fef2c0', description: 'CI/CD pipeline changes' },
+
+              // Size labels
+              { name: 'size/XS', color: 'ededed', description: 'Extra small change (<10 lines)' },
+              { name: 'size/S', color: 'd4d4d4', description: 'Small change (<50 lines)' },
+              { name: 'size/M', color: 'bfbfbf', description: 'Medium change (<200 lines)' },
+              { name: 'size/L', color: 'a3a3a3', description: 'Large change (<500 lines)' },
+              { name: 'size/XL', color: '878787', description: 'Extra large change (500+ lines)' },
+
+              // Status labels
+              { name: 'stale', color: 'ffffff', description: 'No recent activity' },
+              { name: 'pinned', color: '006b75', description: 'Pinned - will not be marked stale' },
+              { name: 'wontfix', color: 'ffffff', description: 'This will not be worked on' },
+              { name: 'duplicate', color: 'cfd3d7', description: 'This issue or pull request already exists' },
+              { name: 'invalid', color: 'e4e669', description: 'This doesnt seem right' },
+              { name: 'help wanted', color: '008672', description: 'Extra attention is needed' },
+              { name: 'good first issue', color: '7057ff', description: 'Good for newcomers' },
+
+              // Automation labels
+              { name: 'dependencies', color: '0366d6', description: 'Dependency updates' },
+              { name: 'auto-merge', color: '2cbe4e', description: 'Approved for automatic merge' },
+              { name: 'auto-fix', color: 'b4a7d6', description: 'Automatic code fixes' },
+              { name: 'style', color: 'c7def8', description: 'Code style/formatting' },
+            ];
+
+            for (const label of labels) {
+              try {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label.name,
+                  color: label.color,
+                  description: label.description
+                });
+                console.log(`Created label: ${label.name}`);
+              } catch (e) {
+                if (e.status === 422) {
+                  // Label exists, try to update it
+                  try {
+                    await github.rest.issues.updateLabel({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      name: label.name,
+                      color: label.color,
+                      description: label.description
+                    });
+                    console.log(`Updated label: ${label.name}`);
+                  } catch (ue) {
+                    console.log(`Could not update label ${label.name}: ${ue.message}`);
+                  }
+                } else {
+                  console.log(`Error with label ${label.name}: ${e.message}`);
+                }
+              }
+            }
+
+            console.log('Label setup complete!');

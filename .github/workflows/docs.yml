@@ -107,13 +107,33 @@ jobs:
     name: Deploy to GitHub Pages
     needs: build-docs
     runs-on: ubuntu-latest
+    # Only deploy on main branch pushes and workflow_dispatch
+    if: github.ref == 'refs/heads/main'
     continue-on-error: true
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
+      - name: Check Pages permissions
+        id: check-pages
+        run: |
+          echo "Attempting GitHub Pages deployment..."
+          echo "Branch: ${{ github.ref }}"
+          echo "Event: ${{ github.event_name }}"
+        continue-on-error: true
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
         continue-on-error: true
+
+      - name: Deployment status
+        if: always()
+        run: |
+          if [ "${{ steps.deployment.outcome }}" == "success" ]; then
+            echo "Deployment successful!"
+          else
+            echo "::warning::GitHub Pages deployment skipped or failed."
+            echo "::warning::To enable: Settings > Environments > github-pages > Allow main branch"
+          fi

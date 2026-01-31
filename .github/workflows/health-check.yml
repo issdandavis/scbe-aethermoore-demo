@@ -1,0 +1,158 @@
+name: System Health Check
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # Run daily at 6 AM UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  health-check:
+    name: Repository Health Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy scipy
+
+      - name: Core Module Health
+        id: core-health
+        run: |
+          echo "## Core Module Status" >> $GITHUB_STEP_SUMMARY
+          python -c "
+          import sys
+          checks = []
+
+          # Check core imports
+          try:
+              from symphonic_cipher.scbe_aethermoore import HyperbolicEngine, compute_risk
+              checks.append(('Core SCBE imports', True))
+          except Exception as e:
+              checks.append(('Core SCBE imports', False, str(e)))
+
+          # Check PHDM
+          try:
+              from symphonic_cipher.scbe_aethermoore import phdm_self_test
+              result = phdm_self_test()
+              checks.append(('PHDM self-test', result['passed'] == result['total']))
+          except Exception as e:
+              checks.append(('PHDM self-test', False, str(e)))
+
+          # Check PQC
+          try:
+              from symphonic_cipher.scbe_aethermoore import pqc_self_test
+              result = pqc_self_test()
+              checks.append(('PQC self-test', result['passed'] == result['total']))
+          except Exception as e:
+              checks.append(('PQC self-test', False, str(e)))
+
+          # Check Axiom compliance
+          try:
+              import numpy as np
+              from symphonic_cipher.scbe_aethermoore import HyperbolicEngine, l12_harmonic_scaling
+              hyper = HyperbolicEngine()
+              u = hyper.poincare_embed(np.array([1000.0]*6))
+              axiom_ok = np.linalg.norm(u) < 1.0 and l12_harmonic_scaling(2.0) > 50
+              checks.append(('Axiom compliance (A4, A12)', axiom_ok))
+          except Exception as e:
+              checks.append(('Axiom compliance', False, str(e)))
+
+          # Print results
+          print('| Check | Status |')
+          print('|-------|--------|')
+          for check in checks:
+              status = ':white_check_mark:' if check[1] else ':x:'
+              print(f'| {check[0]} | {status} |')
+
+          # Exit with error if any failed
+          if not all(c[1] for c in checks):
+              sys.exit(1)
+          "
+        continue-on-error: true
+
+      - name: Test Suite Quick Check
+        id: test-check
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Quick Test Results" >> $GITHUB_STEP_SUMMARY
+          cd symphonic_cipher
+          python -m pytest tests/ -v --tb=no -q --co 2>/dev/null | head -20 || echo "Tests collected"
+          python -m pytest tests/test_core.py -v --tb=short -x 2>&1 | tail -20 >> $GITHUB_STEP_SUMMARY || true
+        continue-on-error: true
+
+      - name: Dependency Check
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Dependencies" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          pip list | grep -E "numpy|scipy|pytest" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Generate Health Report
+        if: always()
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Health Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Run Date: $(date -Iseconds)" >> $GITHUB_STEP_SUMMARY
+          echo "- Branch: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.core-health.outcome }}" == "success" ]; then
+            echo "- Core Health: :white_check_mark: Healthy" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- Core Health: :warning: Issues detected" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  workflow-status:
+    name: Check Workflow Health
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check recent workflow runs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: workflows } = await github.rest.actions.listRepoWorkflows({
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            });
+
+            let summary = '## Workflow Status\n\n';
+            summary += '| Workflow | State | Recent Status |\n';
+            summary += '|----------|-------|---------------|\n';
+
+            for (const wf of workflows.workflows.slice(0, 15)) {
+              const { data: runs } = await github.rest.actions.listWorkflowRuns({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: wf.id,
+                per_page: 1
+              });
+
+              const state = wf.state === 'active' ? ':white_check_mark:' : ':x:';
+              let status = 'No runs';
+              if (runs.workflow_runs.length > 0) {
+                const run = runs.workflow_runs[0];
+                if (run.conclusion === 'success') status = ':white_check_mark: Success';
+                else if (run.conclusion === 'failure') status = ':x: Failed';
+                else if (run.status === 'in_progress') status = ':hourglass: Running';
+                else status = run.conclusion || run.status;
+              }
+
+              summary += `| ${wf.name} | ${state} | ${status} |\n`;
+            }
+
+            core.summary.addRaw(summary);
+            await core.summary.write();

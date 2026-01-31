@@ -1,0 +1,158 @@
+name: PR Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  validate-pr:
+    name: Validate PR
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check PR title format
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = context.payload.pull_request.title;
+            const validPrefixes = [
+              'feat:', 'fix:', 'docs:', 'style:', 'refactor:',
+              'perf:', 'test:', 'build:', 'ci:', 'chore:', 'revert:',
+              'Feat:', 'Fix:', 'Docs:', 'Chore:', 'Test:', 'Refactor:'
+            ];
+
+            const hasValidPrefix = validPrefixes.some(p => title.startsWith(p)) ||
+                                   title.match(/^\[.*?\]/);  // Allow [type] format too
+
+            if (!hasValidPrefix) {
+              core.warning(`PR title should start with a type prefix (e.g., feat:, fix:, docs:)`);
+            } else {
+              console.log('PR title format is valid');
+            }
+
+      - name: Check for large files
+        run: |
+          echo "Checking for large files..."
+          large_files=$(find . -type f -size +1M -not -path "./.git/*" 2>/dev/null || true)
+          if [ -n "$large_files" ]; then
+            echo "::warning::Large files detected (>1MB):"
+            echo "$large_files"
+          fi
+
+      - name: Check for secrets in diff
+        run: |
+          echo "Scanning for potential secrets..."
+          # Simple pattern matching for common secret formats
+          if git diff origin/main...HEAD | grep -iE "(api[_-]?key|secret|password|token|credential)" | grep -v "example\|test\|mock\|fake" | head -5; then
+            echo "::warning::Potential secrets detected in changes. Please review."
+          fi
+        continue-on-error: true
+
+      - name: Validate Python syntax
+        run: |
+          echo "Validating Python syntax..."
+          find . -name "*.py" -not -path "./.git/*" -print0 | xargs -0 -n1 python -m py_compile 2>&1 || true
+
+      - name: Check for merge conflicts markers
+        run: |
+          if grep -rn "<<<<<<< \|======= \|>>>>>>> " --include="*.py" --include="*.ts" --include="*.js" --include="*.yml" . 2>/dev/null; then
+            echo "::error::Merge conflict markers found!"
+            exit 1
+          fi
+          echo "No merge conflict markers found"
+
+  quick-test:
+    name: Quick Smoke Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy scipy pytest
+
+      - name: Run smoke tests
+        run: |
+          echo "Running quick smoke tests..."
+          python -c "
+          # Quick import check
+          from symphonic_cipher.scbe_aethermoore import HyperbolicEngine, compute_risk
+          import numpy as np
+
+          # Basic functionality
+          hyper = HyperbolicEngine()
+          u = hyper.poincare_embed(np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]))
+          assert np.linalg.norm(u) < 1.0, 'Poincare constraint violated'
+
+          result = compute_risk(0.5, 0.5, 0.5, 0.5, 0.5, 0.5)
+          assert result.decision in ['ALLOW', 'QUARANTINE', 'DENY'], 'Invalid decision'
+
+          print('Smoke tests passed!')
+          "
+        continue-on-error: true
+
+  comment-summary:
+    name: PR Summary
+    runs-on: ubuntu-latest
+    needs: [validate-pr, quick-test]
+    if: always()
+
+    steps:
+      - name: Create PR comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const validateResult = '${{ needs.validate-pr.result }}';
+            const testResult = '${{ needs.quick-test.result }}';
+
+            let body = '## PR Validation Summary\n\n';
+            body += '| Check | Status |\n';
+            body += '|-------|--------|\n';
+            body += `| Validation | ${validateResult === 'success' ? ':white_check_mark:' : ':warning:'} ${validateResult} |\n`;
+            body += `| Smoke Test | ${testResult === 'success' ? ':white_check_mark:' : ':warning:'} ${testResult} |\n`;
+            body += '\n---\n';
+            body += '*Automated PR validation by SCBE-AETHERMOORE CI*';
+
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+
+            const botComment = comments.find(c =>
+              c.user.type === 'Bot' && c.body.includes('PR Validation Summary')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
