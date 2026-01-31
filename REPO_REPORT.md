@@ -10,7 +10,7 @@
 
 This repository implements a **hyperbolic geometry-based AI safety system** where adversarial behavior is blocked by topology, not rules. The system uses a 14-layer pipeline, 16 polyhedra defense manifold, and 6 Sacred Tongues for multi-dimensional governance.
 
-**Test Status**: 1015 passed, 0 failed, 45 xfailed (security tests)
+**Test Status**: 1087 passed, 0 failed, 49 xfailed (security tests)
 
 ---
 
@@ -45,12 +45,16 @@ scbe-aethermoore-demo/
 | `hnn_comparison.py` | 680 | **HNN vs SCBE** - Ablation study comparing approaches | WORKING |
 | `toy_phdm.py` | 400 | **Simple PHDM** - 2D Poincare disk demo | WORKING |
 | `visualize.py` | 390 | **Visualization** - Geometric rendering tools | WORKING |
+| `geo_vector.py` | 860 | **Geographic Vector** - GPS to 6D, context-bound keys | WORKING |
+| `hyper_torus.py` | 700 | **Hyper-Torus T^4** - Dead-end escape, mirror symmetry keys | WORKING |
 
 **How They Work Together**:
 ```
 User Intent → geoseal.py (attack detection)
+           → geo_vector.py (GPS/context to 6D vector)
            → math_skeleton.py (14-layer pipeline)
            → phdm_54face.py (dimensional governance)
+           → hyper_torus.py (escape dead-ends via T^4 lift)
            → swarm.py (multi-agent consensus)
            → ALLOW / DENY decision
 ```
