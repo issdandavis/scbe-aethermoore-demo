@@ -10,7 +10,7 @@
 
 This repository implements a **hyperbolic geometry-based AI safety system** where adversarial behavior is blocked by topology, not rules. The system uses a 14-layer pipeline, 16 polyhedra defense manifold, and 6 Sacred Tongues for multi-dimensional governance.
 
-**Test Status**: 1087 passed, 0 failed, 49 xfailed (security tests)
+**Test Status**: 1137 passed, 0 failed, 51 xfailed (security tests)
 
 ---
 
@@ -37,7 +37,7 @@ scbe-aethermoore-demo/
 | File | Lines | Purpose | Status |
 |------|-------|---------|--------|
 | `math_skeleton.py` | 1,100 | **14-Layer Pipeline** - Complete mathematical implementation | WORKING |
-| `geoseal.py` | 970 | **GeoSeal Kernel** - Attack pattern detection, fail-to-noise | WORKING |
+| `geoseal.py` | 1,870 | **GeoSeal Kernel v2.0** - Enhanced with Spiralverse, Memory Admission, Mirror Keys | WORKING |
 | `phdm_54face.py` | 500 | **54-Face Model** - 3 Valence x 3 Spatial x 6 Tongues | WORKING |
 | `swarm.py` | 600 | **Swarm Agent** - Multi-agent Byzantine coordination | WORKING |
 | `swarm_ops.py` | 580 | **Swarm Operations** - Agent communication protocols | WORKING |
