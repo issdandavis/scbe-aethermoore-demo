@@ -20,7 +20,7 @@ jobs:
         continue-on-error: true
 
       - name: Apply labels based on files changed
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const changedFiles = '${{ steps.changed-files.outputs.all_changed_files }}'.split(' ');
