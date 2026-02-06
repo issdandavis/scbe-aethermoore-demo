@@ -325,13 +325,9 @@ async function aesGcmEncrypt(
     throw new Error('Web Crypto API not available');
   }
 
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    toBufferSource(key),
-    'AES-GCM',
-    false,
-    ['encrypt']
-  );
+  const cryptoKey = await crypto.subtle.importKey('raw', toBufferSource(key), 'AES-GCM', false, [
+    'encrypt',
+  ]);
 
   const result = await crypto.subtle.encrypt(
     {
@@ -366,13 +362,9 @@ async function aesGcmDecrypt(
     throw new Error('Web Crypto API not available');
   }
 
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    toBufferSource(key),
-    'AES-GCM',
-    false,
-    ['decrypt']
-  );
+  const cryptoKey = await crypto.subtle.importKey('raw', toBufferSource(key), 'AES-GCM', false, [
+    'decrypt',
+  ]);
 
   // Combine ciphertext + tag for Web Crypto
   const combined = new Uint8Array(ciphertext.length + tag.length);

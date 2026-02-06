@@ -36,7 +36,7 @@ describe('SCBE-AETHERMOORE Roundtable System', () => {
 
       expect(agent.id).toBeDefined();
       expect(agent.trustVector).toHaveLength(6);
-      agent.trustVector.forEach(v => {
+      agent.trustVector.forEach((v) => {
         expect(v).toBeCloseTo(0.5, 1);
       });
     });
@@ -140,7 +140,7 @@ describe('SCBE-AETHERMOORE Roundtable System', () => {
     it('should define all 6 Sacred Tongues', () => {
       const tongues: GovernanceTier[] = ['KO', 'AV', 'RU', 'CA', 'UM', 'DR'];
 
-      tongues.forEach(tongue => {
+      tongues.forEach((tongue) => {
         expect(GOVERNANCE_TIERS[tongue]).toBeDefined();
       });
     });
@@ -149,7 +149,7 @@ describe('SCBE-AETHERMOORE Roundtable System', () => {
       const tiers = ['KO', 'AV', 'RU', 'CA', 'UM', 'DR'] as GovernanceTier[];
       let prevMinTrust = 0;
 
-      tiers.forEach(tier => {
+      tiers.forEach((tier) => {
         const config = GOVERNANCE_TIERS[tier];
         expect(config.minTrustScore).toBeGreaterThanOrEqual(prevMinTrust);
         prevMinTrust = config.minTrustScore;
@@ -160,7 +160,7 @@ describe('SCBE-AETHERMOORE Roundtable System', () => {
       const tiers = ['KO', 'AV', 'RU', 'CA', 'UM', 'DR'] as GovernanceTier[];
       let prevRequired = 0;
 
-      tiers.forEach(tier => {
+      tiers.forEach((tier) => {
         const config = GOVERNANCE_TIERS[tier];
         expect(config.requiredTongues).toBeGreaterThanOrEqual(prevRequired);
         prevRequired = config.requiredTongues;
@@ -177,7 +177,7 @@ describe('SCBE-AETHERMOORE Roundtable System', () => {
 
     it('should have descriptions for all tiers', () => {
       const tiers = ['KO', 'AV', 'RU', 'CA', 'UM', 'DR'] as GovernanceTier[];
-      tiers.forEach(tier => {
+      tiers.forEach((tier) => {
         expect(GOVERNANCE_TIERS[tier].description).toBeDefined();
         expect(GOVERNANCE_TIERS[tier].description.length).toBeGreaterThan(0);
       });
@@ -215,7 +215,7 @@ describe('SCBE-AETHERMOORE Roundtable System', () => {
     it('should create roundtable session', () => {
       const session = governance.createRoundtable({
         topic: 'Grant elevated permissions',
-        requiredTier: 'KO',  // Use KO tier since we only have 2 agents
+        requiredTier: 'KO', // Use KO tier since we only have 2 agents
       });
 
       expect(session.id).toBeDefined();
@@ -224,7 +224,7 @@ describe('SCBE-AETHERMOORE Roundtable System', () => {
 
     it('should allow voting on session', () => {
       const allAgents = registry.getAllAgents();
-      const leader = allAgents.find(a => a.name === 'Leader');
+      const leader = allAgents.find((a) => a.name === 'Leader');
 
       const session = governance.createRoundtable({
         topic: 'Test operation',
@@ -249,7 +249,7 @@ describe('SCBE-AETHERMOORE Roundtable System', () => {
     });
 
     it('should check if agent can perform action', () => {
-      const leader = registry.getAllAgents().find(a => a.name === 'Leader');
+      const leader = registry.getAllAgents().find((a) => a.name === 'Leader');
       expect(leader).toBeDefined();
 
       const result = governance.canPerformAction(leader!.id, 'read');

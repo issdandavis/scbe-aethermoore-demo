@@ -28,8 +28,8 @@ function continuousHarmonicScale(distance: number, R: number): number {
 }
 
 // Physics Simulator API endpoint
-const PHYSICS_TRAP_API = process.env.PHYSICS_TRAP_API ||
-  'https://ldrsy9yqs7.execute-api.us-west-2.amazonaws.com/';
+const PHYSICS_TRAP_API =
+  process.env.PHYSICS_TRAP_API || 'https://ldrsy9yqs7.execute-api.us-west-2.amazonaws.com/';
 
 // Decision types
 export type SecurityDecision = 'ALLOW' | 'QUARANTINE' | 'DENY';
@@ -39,7 +39,7 @@ export interface AgentRequest {
   agentId: string;
   action: string;
   payload: unknown;
-  position?: number[];  // 6D position in hyperbolic space
+  position?: number[]; // 6D position in hyperbolic space
   timestamp?: number;
 }
 
@@ -72,10 +72,10 @@ export interface PhysicsTrap {
  * Attackers are pushed to boundary (high distance)
  */
 const TRUSTED_AGENT_POSITIONS: Record<string, number[]> = {
-  'captain': [0.1, 0.05, 0.08, 0.12, 0.06, 0.09],
-  'architect': [0.15, 0.1, 0.12, 0.08, 0.11, 0.07],
-  'security': [0.05, 0.03, 0.04, 0.06, 0.02, 0.05],
-  'analyst': [0.2, 0.15, 0.18, 0.14, 0.16, 0.12],
+  captain: [0.1, 0.05, 0.08, 0.12, 0.06, 0.09],
+  architect: [0.15, 0.1, 0.12, 0.08, 0.11, 0.07],
+  security: [0.05, 0.03, 0.04, 0.06, 0.02, 0.05],
+  analyst: [0.2, 0.15, 0.18, 0.14, 0.16, 0.12],
 };
 
 // Thresholds
@@ -150,18 +150,18 @@ export class SCBEGateway {
    */
   private calculateBaseRisk(action: string): number {
     const riskMap: Record<string, number> = {
-      'read': 0.1,
-      'query': 0.1,
-      'list': 0.1,
-      'write': 0.3,
-      'update': 0.3,
-      'create': 0.3,
-      'delete': 0.6,
-      'execute': 0.5,
-      'deploy': 0.7,
-      'admin': 0.8,
-      'sudo': 0.9,
-      'root': 0.95,
+      read: 0.1,
+      query: 0.1,
+      list: 0.1,
+      write: 0.3,
+      update: 0.3,
+      create: 0.3,
+      delete: 0.6,
+      execute: 0.5,
+      deploy: 0.7,
+      admin: 0.8,
+      sudo: 0.9,
+      root: 0.95,
     };
 
     const lowerAction = action.toLowerCase();
@@ -206,7 +206,7 @@ export class SCBEGateway {
       simulationType: this.selectTrapType(riskScore),
       hostileParameters: {
         gravity_multiplier: hostility * 2,
-        time_dilation: 1 / hostility,  // Slow their time
+        time_dilation: 1 / hostility, // Slow their time
         entropy_injection: hostility * 0.5,
         turbulence_factor: hostility * 3,
       },
@@ -225,10 +225,10 @@ export class SCBEGateway {
    * Select trap type based on risk profile
    */
   private selectTrapType(riskScore: number): PhysicsTrap['simulationType'] {
-    if (riskScore > 0.9) return 'relativity';      // Extreme time dilation
-    if (riskScore > 0.8) return 'quantum';         // Uncertainty principle chaos
-    if (riskScore > 0.7) return 'thermodynamics';  // Entropy nightmare
-    return 'electromagnetism';                      // EM interference
+    if (riskScore > 0.9) return 'relativity'; // Extreme time dilation
+    if (riskScore > 0.8) return 'quantum'; // Uncertainty principle chaos
+    if (riskScore > 0.7) return 'thermodynamics'; // Entropy nightmare
+    return 'electromagnetism'; // EM interference
   }
 
   /**
@@ -255,7 +255,11 @@ export class SCBEGateway {
  * Middleware for Express/Fastify integration
  */
 export function scbeMiddleware(gateway: SCBEGateway) {
-  return async (req: { body?: AgentRequest; headers: Record<string, string> }, res: { status: (code: number) => { json: (data: unknown) => void } }, next: () => void) => {
+  return async (
+    req: { body?: AgentRequest; headers: Record<string, string> },
+    res: { status: (code: number) => { json: (data: unknown) => void } },
+    next: () => void
+  ) => {
     const agentId = req.headers['x-agent-id'] || 'unknown';
     const action = req.headers['x-action'] || 'unknown';
 

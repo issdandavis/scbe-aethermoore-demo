@@ -229,7 +229,7 @@ describe('SCBE Gateway Integration', () => {
     it('should ALLOW when risk < 0.3', async () => {
       const request: AgentRequest = {
         agentId: 'security', // Closest to origin
-        action: 'read',      // Lowest risk action
+        action: 'read', // Lowest risk action
         payload: {},
       };
 

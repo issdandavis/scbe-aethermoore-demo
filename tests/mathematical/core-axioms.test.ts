@@ -20,11 +20,7 @@ import {
   securityBits,
   harmonicDistance,
 } from '../../src/harmonic/harmonicScaling.js';
-import {
-  hyperbolicDistance,
-  projectToBall,
-  mobiusAdd,
-} from '../../src/harmonic/hyperbolic.js';
+import { hyperbolicDistance, projectToBall, mobiusAdd } from '../../src/harmonic/hyperbolic.js';
 import { LanguesMetric } from '../../src/harmonic/languesMetric.js';
 import { CONSTANTS, type Vector6D } from '../../src/harmonic/constants.js';
 
@@ -158,7 +154,7 @@ describe('SCBE Core Mathematical Axioms', () => {
     });
 
     it('should generate correct tongue weights', () => {
-      const weights = [1, 2, 3, 4, 5, 6].map(l => Math.pow(PHI, l - 1));
+      const weights = [1, 2, 3, 4, 5, 6].map((l) => Math.pow(PHI, l - 1));
       // Weights: 1, φ, φ², φ³, φ⁴, φ⁵
       expect(weights[0]).toBeCloseTo(1, 10);
       expect(weights[1]).toBeCloseTo(PHI, 10);
@@ -345,7 +341,7 @@ describe('SCBE Core Mathematical Axioms', () => {
       // Simulate gradient descent toward origin
       for (let step = 0; step < 10; step++) {
         // Move toward origin
-        point = point.map(x => x * (1 - stepSize)) as Vector6D;
+        point = point.map((x) => x * (1 - stepSize)) as Vector6D;
         energies.push(metric.compute(point, 0));
       }
 
@@ -390,7 +386,8 @@ describe('SCBE Core Mathematical Axioms', () => {
 
   describe('Ground Truth: Mathematical Invariants', () => {
     it('exp(a+b) = exp(a) × exp(b) - used in all exponential formulas', () => {
-      const a = 2.5, b = 3.7;
+      const a = 2.5,
+        b = 3.7;
       expect(Math.exp(a + b)).toBeCloseTo(Math.exp(a) * Math.exp(b), 10);
     });
 
