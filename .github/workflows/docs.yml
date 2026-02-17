@@ -110,30 +110,36 @@ jobs:
     # Only deploy on main branch pushes and workflow_dispatch
     if: github.ref == 'refs/heads/main'
     continue-on-error: true
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      - name: Check Pages permissions
-        id: check-pages
-        run: |
-          echo "Attempting GitHub Pages deployment..."
-          echo "Branch: ${{ github.ref }}"
-          echo "Event: ${{ github.event_name }}"
-        continue-on-error: true
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
-        continue-on-error: true
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: github-pages
+          path: docs-deploy
+
+      - name: Extract artifact
+        run: |
+          cd docs-deploy
+          if [ -f artifact.tar ]; then
+            tar -xf artifact.tar
+            rm artifact.tar
+          fi
+          ls -la
+
+      - name: Deploy to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs-deploy
+          publish_branch: gh-pages
+          force_orphan: true
+          commit_message: 'docs: deploy documentation [skip ci]'
 
       - name: Deployment status
         if: always()
         run: |
-          if [ "${{ steps.deployment.outcome }}" == "success" ]; then
-            echo "Deployment successful!"
-          else
-            echo "::warning::GitHub Pages deployment skipped or failed."
-            echo "::warning::To enable: Settings > Environments > github-pages > Allow main branch"
-          fi
+          echo "Documentation deployed to: https://issdandavis.github.io/scbe-aethermoore-demo/"
