@@ -103,7 +103,7 @@ jobs:
           echo "# SCBE-AETHERMOORE Demo" > demo-package/README.md
 
       - name: Upload Demo Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: scbe-demo-package
           path: demo-package/
