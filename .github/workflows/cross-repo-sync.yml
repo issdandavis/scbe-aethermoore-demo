@@ -46,13 +46,13 @@ jobs:
           fi
 
       - name: Checkout scbe-aethermoore-demo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: source
           fetch-depth: 0
 
       - name: Checkout gumroad-automation-demo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ env.TARGET_REPO }}
           token: ${{ secrets.CROSS_REPO_SYNCH }}
@@ -130,7 +130,7 @@ jobs:
     
     steps:
       - name: Checkout gumroad-automation-demo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ env.TARGET_REPO }}
           token: ${{ secrets.CROSS_REPO_SYNCH }}
